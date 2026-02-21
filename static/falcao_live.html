@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>🦅 Falcão Live</title>
+  <style>
+    :root{
+      --bg:#0b111a;
+      --panel:#111827;
+      --panel2:#0f172a;
+      --line:#243041;
+      --text:#e5e7eb;
+      --muted:#94a3b8;
+      --gold:#f59e0b;
+      --red:#ef4444;
+      --green:#22c55e;
+      --blue:#3b82f6;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      background:linear-gradient(180deg, #0b111a 0%, #0a0f18 100%);
+      color:var(--text);
+      font-family:Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      min-height:100vh;
+      display:flex;
+      justify-content:center;
+      align-items:flex-start;
+      padding:24px;
+    }
+    .app{
+      width:100%;
+      max-width:900px;
+    }
+    .top{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      margin-bottom:14px;
+    }
+    .brand{
+      display:flex;
+      gap:10px;
+      align-items:center;
+    }
+    .brand .icon{
+      width:38px;height:38px;border-radius:12px;
+      background:rgba(245,158,11,0.12);
+      border:1px solid rgba(245,158,11,0.35);
+      display:flex;align-items:center;justify-content:center;
+      font-size:20px;
+    }
+    .brand h1{
+      font-size:1.05rem;
+      margin:0;
+      font-weight:700;
+      letter-spacing:0.2px;
+    }
+    .brand p{
+      margin:1px 0 0 0;
+      color:var(--muted);
+      font-size:12px;
+    }
+    .badge{
+      border:1px solid rgba(59,130,246,.35);
+      color:#bfdbfe;
+      background:rgba(59,130,246,.08);
+      padding:6px 10px;
+      border-radius:999px;
+      font-size:12px;
+    }
+
+    .panel{
+      border:1px solid var(--line);
+      background:rgba(17,24,39,.75);
+      backdrop-filter: blur(8px);
+      border-radius:18px;
+      padding:14px;
+      margin-bottom:12px;
+    }
+
+    .status{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      color:var(--muted);
+      font-size:13px;
+      margin-bottom:8px;
+    }
+    .dot{
+      width:8px;height:8px;border-radius:999px;background:var(--muted);
+    }
+    .dot.listening{ background: var(--green); box-shadow: 0 0 0 6px rgba(34,197,94,.12);}
+    .dot.thinking{ background: var(--gold); box-shadow: 0 0 0 6px rgba(245,158,11,.12);}
+    .dot.speaking{ background: var(--blue); box-shadow: 0 0 0 6px rgba(59,130,246,.12);}
+    .dot.error{ background: var(--red); }
+
+    .wave{
+      height:52px;
+      display:flex;
+      align-items:flex-end;
+      gap:4px;
+      padding:8px 0 2px;
+      margin-bottom:8px;
+    }
+    .bar{
+      width:6px;
+      border-radius:999px;
+      background:linear-gradient(180deg, rgba(245,158,11,.95), rgba(245,158,11,.35));
+      height:10px;
+      transition:height .08s linear;
+      opacity:.85;
+    }
+
+    .transcript{
+      border:1px solid var(--line);
+      background:rgba(15,23,42,.6);
+      border-radius:14px;
+      padding:12px;
+      min-height:120px;
+      max-height:280px;
+      overflow:auto;
+      line-height:1.45;
+      font-size:14px;
+      white-space:pre-wrap;
+    }
+    .transcript .muted{ color:var(--muted); }
+
+    .controls{
+      margin-top:10px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+    }
+    button{
+      border:1px solid var(--line);
+      background:#0f172a;
+      color:var(--text);
+      border-radius:12px;
+      padding:10px 12px;
+      cursor:pointer;
+      font-weight:600;
+    }
+    button:hover{ border-color:#334155; }
+    .btn-primary{
+      background:rgba(34,197,94,.10);
+      border-color:rgba(34,197,94,.35);
+      color:#dcfce7;
+    }
+    .btn-stop{
+      background:rgba(239,68,68,.10);
+      border-color:rgba(239,68,68,.35);
+      color:#fee2e2;
+    }
+    .btn-secondary{
+      background:rgba(59,130,246,.10);
+      border-color:rgba(59,130,246,.35);
+      color:#dbeafe;
+    }
+    .tip{
+      color:var(--muted);
+      font-size:12px;
+      margin-top:8px;
+    }
+    .row{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:12px;
+    }
+    @media (max-width: 760px) {
+      .row{grid-template-columns:1fr;}
+    }
+    .box-title{
+      font-size:12px;
+      color:var(--muted);
+      margin:0 0 8px 0;
+      font-weight:600;
+      letter-spacing:.2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="top">
+      <div class="brand">
+        <div class="icon">🦅</div>
+        <div>
+          <h1>Falcão Live</h1>
+          <p>Conversa por voz em tempo real (Beta)</p>
+        </div>
+      </div>
+      <div class="badge">Use fones para melhor experiência</div>
+    </div>
+
+    <div class="panel">
+      <div class="status">
+        <div id="statusDot" class="dot"></div>
+        <div id="statusText">Pronto para conectar</div>
+      </div>
+
+      <div id="wave" class="wave"></div>
+
+      <div class="controls">
+        <button id="btnConnect" class="btn-secondary">🔌 Conectar</button>
+        <button id="btnStart" class="btn-primary" disabled>🎙️ Iniciar microfone</button>
+        <button id="btnStop" class="btn-stop" disabled>⏹️ Parar microfone</button>
+        <button id="btnReset">🧹 Nova conversa</button>
+      </div>
+
+      <div class="tip">
+        Fale normalmente. Se o Falcão estiver falando, você pode interromper — ele para e volta a te ouvir.
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="panel">
+        <p class="box-title">Transcrição (você)</p>
+        <div id="userBox" class="transcript"><span class="muted">Sua fala vai aparecer aqui...</span></div>
+      </div>
+
+      <div class="panel">
+        <p class="box-title">Resposta (Falcão)</p>
+        <div id="aiBox" class="transcript"><span class="muted">A resposta do Falcão aparece aqui e será lida em voz alta.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================================
+    // UI refs
+    // ============================================================
+    const btnConnect = document.getElementById("btnConnect");
+    const btnStart = document.getElementById("btnStart");
+    const btnStop = document.getElementById("btnStop");
+    const btnReset = document.getElementById("btnReset");
+
+    const statusDot = document.getElementById("statusDot");
+    const statusText = document.getElementById("statusText");
+    const userBox = document.getElementById("userBox");
+    const aiBox = document.getElementById("aiBox");
+    const wave = document.getElementById("wave");
+
+    // Ondinhas visuais
+    const bars = [];
+    for (let i = 0; i < 28; i++) {
+      const b = document.createElement("div");
+      b.className = "bar";
+      wave.appendChild(b);
+      bars.push(b);
+    }
+
+    let waveTimer = null;
+    function setWaveMode(mode){
+      clearInterval(waveTimer);
+      if (mode === "idle") {
+        bars.forEach((b, i) => b.style.height = (8 + (i % 3) * 3) + "px");
+        return;
+      }
+      waveTimer = setInterval(() => {
+        bars.forEach((b, i) => {
+          let base = 8;
+          if (mode === "listening") base = 8 + Math.random() * 22;
+          if (mode === "thinking") base = 8 + (i % 5) * 3 + Math.random() * 6;
+          if (mode === "speaking") base = 10 + Math.random() * 30;
+          b.style.height = `${base}px`;
+        });
+      }, 100);
+    }
+    setWaveMode("idle");
+
+    function setStatus(mode, text){
+      statusDot.className = "dot " + (mode || "");
+      statusText.textContent = text;
+      if (mode === "listening") setWaveMode("listening");
+      else if (mode === "thinking") setWaveMode("thinking");
+      else if (mode === "speaking") setWaveMode("speaking");
+      else setWaveMode("idle");
+    }
+
+    // ============================================================
+    // WebSocket (backend live)
+    // ============================================================
+    let ws = null;
+    let connected = false;
+
+    function wsUrl(){
+      const protocol = location.protocol === "https:" ? "wss" : "ws";
+      return `${protocol}://${location.host}/ws/live`;
+    }
+
+    function connectWS(){
+      if (ws && connected) return;
+
+      ws = new WebSocket(wsUrl());
+
+      ws.onopen = () => {
+        connected = true;
+        setStatus("", "Conectado. Pronto para ouvir.");
+        btnStart.disabled = false;
+      };
+
+      ws.onclose = () => {
+        connected = false;
+        setStatus("error", "Desconectado");
+        btnStart.disabled = true;
+        btnStop.disabled = true;
+      };
+
+      ws.onerror = () => {
+        setStatus("error", "Erro de conexão");
+      };
+
+      ws.onmessage = (evt) => {
+        try {
+          const data = JSON.parse(evt.data);
+
+          if (data.type === "status") {
+            if (data.value === "thinking") setStatus("thinking", "Analisando...");
+            else if (data.value === "interrupted") setStatus("listening", "Interrompido — ouvindo...");
+            else if (data.value === "reset") {
+              aiBox.innerHTML = '<span class="muted">Nova conversa iniciada.</span>';
+              userBox.innerHTML = '<span class="muted">Sua fala vai aparecer aqui...</span>';
+              setStatus("", "Conversa reiniciada.");
+            } else if (data.value === "connected") {
+              setStatus("", "Conectado. Pronto para ouvir.");
+            }
+            return;
+          }
+
+          if (data.type === "assistant_chunk") {
+            if (!aiStreaming) {
+              aiStreaming = true;
+              aiBuffer = "";
+              aiBox.textContent = "";
+              setStatus("thinking", "Respondendo...");
+            }
+            aiBuffer += data.text;
+            aiBox.textContent = aiBuffer;
+            aiBox.scrollTop = aiBox.scrollHeight;
+            return;
+          }
+
+          if (data.type === "assistant_done") {
+            aiStreaming = false;
+            setStatus("speaking", "Falando...");
+            speak(aiBuffer);
+            return;
+          }
+
+          if (data.type === "error") {
+            setStatus("error", "Erro: " + (data.message || "desconhecido"));
+            console.error(data.message);
+            return;
+          }
+        } catch (e) {
+          console.error("Erro ao ler mensagem WS:", e);
+        }
+      };
+    }
+
+    // ============================================================
+    // Speech Recognition (voz -> texto)
+    // ============================================================
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+    let micOn = false;
+    let aiStreaming = false;
+    let aiBuffer = "";
+    let finalUserParts = [];
+
+    function setupRecognition(){
+      if (!SpeechRecognition) {
+        alert("Seu navegador não suporta reconhecimento de voz (use Chrome/Edge).");
+        return false;
+      }
+
+      recognition = new SpeechRecognition();
+      recognition.lang = "pt-BR";
+      recognition.continuous = true;
+      recognition.interimResults = true;
+
+      recognition.onstart = () => {
+        micOn = true;
+        btnStart.disabled = true;
+        btnStop.disabled = false;
+        setStatus("listening", "Ouvindo...");
+      };
+
+      recognition.onend = () => {
+        // Se microfone ainda deveria estar ligado, reinicia
+        if (micOn) {
+          try { recognition.start(); } catch (_) {}
+        } else {
+          setStatus("", "Microfone parado.");
+          btnStart.disabled = false;
+          btnStop.disabled = true;
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.warn("SpeechRecognition error:", event.error);
+        if (event.error === "not-allowed") {
+          setStatus("error", "Permissão de microfone negada.");
+          micOn = false;
+          btnStart.disabled = false;
+          btnStop.disabled = true;
+          return;
+        }
+      };
+
+      recognition.onspeechstart = () => {
+        // Se a IA estiver falando, o usuário pode interromper
+        if (window.speechSynthesis.speaking) {
+          window.speechSynthesis.cancel();
+          if (connected) {
+            ws.send(JSON.stringify({ type: "interrupt" }));
+          }
+        }
+        setStatus("listening", "Ouvindo...");
+      };
+
+      recognition.onresult = (event) => {
+        let interim = "";
+        let finals = [];
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          const text = result[0].transcript.trim();
+          if (!text) continue;
+
+          if (result.isFinal) finals.push(text);
+          else interim += (interim ? " " : "") + text;
+        }
+
+        if (finals.length) {
+          finalUserParts.push(...finals);
+          userBox.textContent = finalUserParts.join(" ");
+          userBox.scrollTop = userBox.scrollHeight;
+
+          // Envia cada bloco final para o backend
+          finals.forEach(text => {
+            if (connected) {
+              ws.send(JSON.stringify({ type: "user_text", text }));
+            }
+          });
+        } else if (interim) {
+          const base = finalUserParts.join(" ");
+          userBox.textContent = (base ? base + " " : "") + interim;
+          userBox.scrollTop = userBox.scrollHeight;
+        }
+      };
+
+      return true;
+    }
+
+    // ============================================================
+    // TTS (texto -> voz)
+    // ============================================================
+    function speak(text){
+      if (!text || !text.trim()) {
+        setStatus("listening", "Ouvindo...");
+        return;
+      }
+
+      window.speechSynthesis.cancel();
+
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = "pt-BR";
+      utter.rate = 1.0;
+      utter.pitch = 1.0;
+
+      utter.onstart = () => {
+        setStatus("speaking", "Falando...");
+      };
+
+      utter.onend = () => {
+        if (micOn) setStatus("listening", "Ouvindo...");
+        else setStatus("", "Pronto.");
+      };
+
+      utter.onerror = () => {
+        if (micOn) setStatus("listening", "Ouvindo...");
+        else setStatus("", "Pronto.");
+      };
+
+      window.speechSynthesis.speak(utter);
+    }
+
+    // ============================================================
+    // Botões
+    // ============================================================
+    btnConnect.onclick = () => {
+      connectWS();
+    };
+
+    btnStart.onclick = () => {
+      if (!connected) connectWS();
+      if (!recognition) {
+        const ok = setupRecognition();
+        if (!ok) return;
+      }
+      finalUserParts = [];
+      try {
+        recognition.start();
+      } catch (e) {
+        console.warn(e);
+      }
+    };
+
+    btnStop.onclick = () => {
+      micOn = false;
+      try { recognition && recognition.stop(); } catch (_) {}
+      window.speechSynthesis.cancel();
+      setStatus("", "Microfone parado.");
+    };
+
+    btnReset.onclick = () => {
+      finalUserParts = [];
+      userBox.innerHTML = '<span class="muted">Sua fala vai aparecer aqui...</span>';
+      aiBox.innerHTML = '<span class="muted">A resposta do Falcão aparece aqui e será lida em voz alta.</span>';
+      aiBuffer = "";
+      window.speechSynthesis.cancel();
+      if (connected) {
+        ws.send(JSON.stringify({ type: "reset" }));
+      }
+      if (micOn) setStatus("listening", "Ouvindo...");
+      else setStatus("", "Conversa reiniciada.");
+    };
+
+    // Conexão automática
+    connectWS();
+  </script>
+</body>
+</html>
