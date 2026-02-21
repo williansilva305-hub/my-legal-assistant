@@ -22,29 +22,19 @@ st.set_page_config(
 )
 
 # ============================================================
-# CSS (layout premium + chat fixo com rolagem própria)
+# CSS (premium + estável no Streamlit)
 # ============================================================
 st.markdown("""
 <style>
-/* Esconde elementos padrão */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 header {visibility: hidden;}
 
-/* Fundo geral */
 [data-testid="stAppViewContainer"] {
     background: linear-gradient(180deg, #f4f6f9 0%, #eef1f5 100%);
 }
 
-/* Container principal sem scroll da página */
-.block-container {
-    padding-top: 0.8rem !important;
-    padding-bottom: 0.6rem !important;
-    height: 100vh !important;
-    overflow: hidden !important;
-}
-
-/* Sidebar (escura premium) */
+/* Sidebar */
 [data-testid="stSidebar"] {
     background:
       radial-gradient(circle at 20% 20%, rgba(255,177,64,0.10) 0%, rgba(255,177,64,0.00) 35%),
@@ -54,8 +44,6 @@ header {visibility: hidden;}
 [data-testid="stSidebar"] * {
     color: #f3f4f6 !important;
 }
-
-/* Botões da sidebar */
 [data-testid="stSidebar"] .stButton > button,
 [data-testid="stSidebar"] .stLinkButton > a {
     width: 100%;
@@ -72,27 +60,71 @@ header {visibility: hidden;}
     background: rgba(255,255,255,0.05);
 }
 
-/* Área principal */
-.main-wrap {
-    max-width: 1000px;
-    margin: 0 auto;
-    height: calc(100vh - 10px);
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+/* Logo/sidebar */
+.brand-wrap {
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-top: 4px;
+    margin-bottom: 14px;
+}
+.brand-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,193,77,0.35);
+    background: rgba(255,193,77,0.08);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size: 22px;
+}
+.brand-text {
+    display:flex;
+    flex-direction:column;
+    line-height:1.1;
+}
+.brand-text .name {
+    font-weight:700;
+    color:#f8fafc;
+    font-size: 1.05rem;
+}
+.brand-text .sub {
+    color:#94a3b8;
+    font-size: .75rem;
 }
 
-/* Painel fixo do chat (rolagem só aqui) */
-.chat-panel {
-    flex: 1 1 auto;
-    min-height: 0;
+/* Área central */
+.main-title {
+    font-weight: 700;
+    color: #0f172a;
+    font-size: 1.05rem;
+    margin-bottom: 4px;
+}
+.main-subtitle {
+    color: #64748b;
+    font-size: 0.86rem;
+    margin-bottom: 10px;
+}
+
+/* Painel do chat (rolagem própria) */
+.chat-shell {
+    border: 1px solid rgba(15,23,42,0.08);
+    background: rgba(255,255,255,0.55);
+    border-radius: 16px;
+    padding: 10px;
+    box-shadow: 0 8px 30px rgba(15,23,42,0.05);
+}
+.chat-scroll {
+    height: calc(100vh - 280px);
+    min-height: 340px;
+    max-height: calc(100vh - 280px);
     overflow-y: auto;
-    padding: 8px 6px 14px 6px;
+    padding: 4px 4px 8px 4px;
     scroll-behavior: smooth;
-    border-radius: 14px;
 }
 
-/* Mensagens */
+/* Bolhas */
 .msg-row {
     display: flex;
     margin: 10px 0;
@@ -141,114 +173,64 @@ header {visibility: hidden;}
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    max-width: 820px;
-    margin: 0 auto;
-    padding: 0 6px;
+    margin: 8px 0 6px 0;
 }
 .chip {
     border: 1px solid rgba(15,23,42,0.12);
     border-radius: 999px;
     padding: 5px 10px;
     font-size: 0.82rem;
-    background: rgba(255,255,255,0.85);
+    background: rgba(255,255,255,0.90);
     color: #374151;
     box-shadow: 0 2px 10px rgba(0,0,0,0.04);
 }
 
-/* Composer (fixo visualmente no fim do layout) */
-.composer-wrap {
-    flex: 0 0 auto;
+/* Barra auxiliar acima do chat_input */
+.top-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 6px;
 }
-.composer-card {
-    max-width: 820px;
-    margin: 0 auto;
+.live-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 999px;
     border: 1px solid rgba(15,23,42,0.10);
     background: rgba(255,255,255,0.92);
-    backdrop-filter: blur(10px);
-    border-radius: 16px;
-    box-shadow: 0 8px 30px rgba(15,23,42,0.10);
-    padding: 6px;
-}
-
-/* Input interno */
-.composer-card [data-testid="stTextInput"] > div > div input {
-    border: none !important;
-    box-shadow: none !important;
-    background: transparent !important;
-    font-size: 0.98rem;
-}
-
-/* Botões composer */
-.composer-card .stButton > button {
-    border-radius: 12px !important;
-    border: 1px solid rgba(15,23,42,0.10) !important;
-    background: #fff !important;
-    color: #111827 !important;
-    height: 42px;
-}
-.composer-card .stButton > button[kind="primary"] {
-    background: #0b3b7f !important;
-    color: white !important;
-    border-color: transparent !important;
-}
-
-/* "Botão" live via link HTML */
-.live-link {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 42px;
-    border-radius: 12px;
-    border: 1px solid rgba(15,23,42,0.10);
-    background: #fff;
-    color: #111827;
+    color: #0f172a;
     text-decoration: none;
-    font-weight: 500;
-    white-space: nowrap;
+    padding: 8px 12px;
+    font-size: 0.9rem;
 }
-.live-link:hover {
+.live-pill:hover {
     border-color: rgba(15,23,42,0.20);
-    background: #fafafa;
+    background: #fff;
 }
 
-/* Brand sidebar */
-.brand-wrap {
-    display:flex;
-    align-items:center;
-    gap:10px;
-    margin-top: 4px;
-    margin-bottom: 14px;
+/* Melhor aparência do chat_input */
+[data-testid="stChatInput"] {
+    background: transparent !important;
 }
-.brand-icon {
-    width: 42px;
-    height: 42px;
-    border-radius: 12px;
-    border: 1px solid rgba(255,193,77,0.35);
-    background: rgba(255,193,77,0.08);
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    font-size: 22px;
+[data-testid="stChatInput"] textarea {
+    border-radius: 14px !important;
+    border: 1px solid rgba(15,23,42,0.10) !important;
+    background: rgba(255,255,255,0.95) !important;
+    box-shadow: 0 6px 24px rgba(15,23,42,0.08) !important;
 }
-.brand-text {
-    display:flex;
-    flex-direction:column;
-    line-height:1.1;
-}
-.brand-text .name {
-    font-weight:700;
-    color:#f8fafc;
-    font-size: 1.05rem;
-}
-.brand-text .sub {
-    color:#94a3b8;
-    font-size: .75rem;
+
+/* Responsivo */
+@media (max-width: 900px) {
+    .chat-scroll {
+        height: calc(100vh - 320px);
+        max-height: calc(100vh - 320px);
+    }
 }
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================
-# CONFIG DE API / CLIENTE
+# API / CLIENTE
 # ============================================================
 API_KEY = st.secrets.get("GEMINI_API_KEY")
 LIVE_URL = st.secrets.get("LIVE_URL", "http://localhost:8000/live")
@@ -266,7 +248,7 @@ client = get_client(API_KEY)
 # ============================================================
 # CONFIG ASSISTENTE
 # ============================================================
-DEFAULT_MODEL = "gemini-2.5-flash-lite"
+DEFAULT_MODEL = "gemini-2.5-flash-lite"  # free
 DEFAULT_TEMP = 0.6
 
 INSTRUCAO_MESTRA = """
@@ -319,7 +301,7 @@ if "show_history" not in st.session_state:
     st.session_state.show_history = False
 
 # ============================================================
-# UTILITÁRIOS (DOCX/XLSX -> TXT)
+# UTILITÁRIOS (DOCX/XLSX -> TEXTO)
 # ============================================================
 def docx_to_text(file_bytes: bytes) -> str:
     doc = Document(io.BytesIO(file_bytes))
@@ -425,9 +407,9 @@ def upload_attachments(files):
                 pass
 
 # ============================================================
-# RENDER DO CHAT (HTML ÚNICO) + AUTO-SCROLL
+# RENDER DO CHAT + AUTO-SCROLL
 # ============================================================
-def build_chat_html(messages, partial_assistant_text=None):
+def build_chat_body_html(messages, partial_assistant_text=None):
     rows = []
 
     if not messages and not partial_assistant_text:
@@ -441,7 +423,7 @@ def build_chat_html(messages, partial_assistant_text=None):
         for msg in messages:
             role = msg["role"]
             content = msg["content"]
-            safe = html.escape(content).replace("\n", "<br>")
+            safe = html.escape(content).replace("\\n", "<br>")
             label = '<div class="label">Mestre:</div>' if role == "assistant" else ""
             rows.append(f"""
             <div class="msg-row {role}">
@@ -453,7 +435,7 @@ def build_chat_html(messages, partial_assistant_text=None):
             """)
 
         if partial_assistant_text:
-            safe = html.escape(partial_assistant_text).replace("\n", "<br>")
+            safe = html.escape(partial_assistant_text).replace("\\n", "<br>")
             rows.append(f"""
             <div class="msg-row assistant">
               <div class="bubble assistant">
@@ -464,20 +446,26 @@ def build_chat_html(messages, partial_assistant_text=None):
             """)
 
     return f"""
-    <div id="falcon-chat-panel" class="chat-panel">
+    <div id="falcon-chat-scroll" class="chat-scroll">
       {''.join(rows)}
       <div id="falcon-chat-bottom"></div>
     </div>
     """
 
-def auto_scroll_chat():
+def render_chat(chat_placeholder, messages, partial_assistant_text=None):
+    with chat_placeholder.container():
+        st.markdown('<div class="chat-shell">', unsafe_allow_html=True)
+        st.markdown(build_chat_body_html(messages, partial_assistant_text), unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # Auto-scroll no painel interno
     components.html(
         """
         <script>
-          const doc = window.parent.document;
-          const panel = doc.getElementById("falcon-chat-panel");
-          if (panel) {
-            panel.scrollTop = panel.scrollHeight;
+          const d = window.parent.document;
+          const el = d.getElementById("falcon-chat-scroll");
+          if (el) {
+            el.scrollTop = el.scrollHeight;
           }
         </script>
         """,
@@ -485,7 +473,7 @@ def auto_scroll_chat():
     )
 
 # ============================================================
-# SIDEBAR (estilo da imagem)
+# SIDEBAR
 # ============================================================
 with st.sidebar:
     st.markdown("""
@@ -549,7 +537,7 @@ with st.sidebar:
             st.caption("Sem mensagens ainda.")
         else:
             for i, txt in enumerate(user_msgs[-8:], 1):
-                preview = txt.replace("\n", " ")
+                preview = txt.replace("\\n", " ")
                 if len(preview) > 45:
                     preview = preview[:45] + "..."
                 st.caption(f"{i}. {preview}")
@@ -557,67 +545,42 @@ with st.sidebar:
 selected_files = locals().get("selected_files_sidebar") or []
 
 # ============================================================
-# MAIN UI
+# MAIN
 # ============================================================
-st.markdown('<div class="main-wrap">', unsafe_allow_html=True)
+st.markdown('<div class="main-title">Falcon</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-subtitle">Visão, precisão e estratégia para seus casos.</div>', unsafe_allow_html=True)
 
-# Painel de chat (fixo / rolável)
-chat_placeholder = st.empty()
-chat_placeholder.markdown(
-    build_chat_html(st.session_state.messages),
+# Ações acima do input
+st.markdown(
+    f'<div class="top-actions"><a class="live-pill" href="{html.escape(LIVE_URL)}" target="_blank">🎙️ Falcon Live</a></div>',
     unsafe_allow_html=True
 )
-auto_scroll_chat()
 
-# Chips de anexos (compactos)
+# Painel do chat
+chat_placeholder = st.empty()
+render_chat(chat_placeholder, st.session_state.messages)
+
+# Chips de anexos
 if selected_files:
     chips = "".join([f'<span class="chip">📎 {html.escape(f.name)}</span>' for f in selected_files])
     st.markdown(f'<div class="chips-wrap">{chips}</div>', unsafe_allow_html=True)
-else:
-    # espaço mínimo para layout não "pular"
-    st.markdown("<div style='height:2px;'></div>", unsafe_allow_html=True)
 
-# Composer (barra inferior)
-st.markdown('<div class="composer-wrap"><div class="composer-card">', unsafe_allow_html=True)
-
-with st.form("composer_form", clear_on_submit=True):
-    c1, c2, c3 = st.columns([7.0, 1.9, 0.9])
-
-    with c1:
-        pergunta = st.text_input(
-            "Pergunta",
-            placeholder="Pergunte algo ao Mestre...",
-            label_visibility="collapsed"
-        )
-
-    with c2:
-        st.markdown(
-            f'<a href="{html.escape(LIVE_URL)}" target="_blank" class="live-link">🎙️ Falcon Live</a>',
-            unsafe_allow_html=True
-        )
-
-    with c3:
-        enviar = st.form_submit_button("➤", use_container_width=True, type="primary")
-
-st.markdown('</div></div>', unsafe_allow_html=True)
+# Input de mensagem (sempre visível)
+pergunta = st.chat_input("Pergunte algo ao Mestre...")
 
 # ============================================================
 # ENVIO / STREAMING
 # ============================================================
-if enviar and pergunta and pergunta.strip():
+if pergunta and pergunta.strip():
     pergunta = pergunta.strip()
 
     user_display = pergunta
     if selected_files:
         user_display += "\n\n📎 Anexos enviados: " + ", ".join([f.name for f in selected_files])
 
-    # 1) Mensagem do usuário
+    # Mensagem do usuário
     st.session_state.messages.append({"role": "user", "content": user_display})
-    chat_placeholder.markdown(
-        build_chat_html(st.session_state.messages),
-        unsafe_allow_html=True
-    )
-    auto_scroll_chat()
+    render_chat(chat_placeholder, st.session_state.messages)
 
     try:
         refs = []
@@ -627,51 +590,28 @@ if enviar and pergunta and pergunta.strip():
 
             info_txt = "✅ Anexos processados: " + " • ".join(labels)
             st.session_state.messages.append({"role": "assistant", "content": info_txt})
-
-            chat_placeholder.markdown(
-                build_chat_html(st.session_state.messages),
-                unsafe_allow_html=True
-            )
-            auto_scroll_chat()
+            render_chat(chat_placeholder, st.session_state.messages)
 
         payload = [*refs, pergunta] if refs else pergunta
 
-        # 2) Streaming dentro do painel fixo
         chunks = []
         for chunk in st.session_state.chat.send_message_stream(payload):
             txt = getattr(chunk, "text", None)
             if txt:
                 chunks.append(txt)
                 parcial = "".join(chunks)
-
-                chat_placeholder.markdown(
-                    build_chat_html(st.session_state.messages, partial_assistant_text=parcial),
-                    unsafe_allow_html=True
-                )
-                auto_scroll_chat()
+                render_chat(chat_placeholder, st.session_state.messages, partial_assistant_text=parcial)
 
         final_text = "".join(chunks).strip() or "Não consegui responder agora. Tenta reformular."
         st.session_state.messages.append({"role": "assistant", "content": final_text})
 
-        # Limpa anexos selecionados (reset do uploader)
+        # limpa anexos após envio
         st.session_state.uploader_key += 1
 
-        # Render final
-        chat_placeholder.markdown(
-            build_chat_html(st.session_state.messages),
-            unsafe_allow_html=True
-        )
-        auto_scroll_chat()
-
+        render_chat(chat_placeholder, st.session_state.messages)
         st.rerun()
 
     except Exception as e:
         err = f"❌ Erro: {e}"
         st.session_state.messages.append({"role": "assistant", "content": err})
-        chat_placeholder.markdown(
-            build_chat_html(st.session_state.messages),
-            unsafe_allow_html=True
-        )
-        auto_scroll_chat()
-
-st.markdown('</div>', unsafe_allow_html=True)
+        render_chat(chat_placeholder, st.session_state.messages)
