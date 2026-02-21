@@ -1,6 +1,7 @@
 import io
 import os
 import time
+import html
 import tempfile
 from pathlib import Path
 
@@ -14,78 +15,229 @@ from openpyxl import load_workbook
 # CONFIG DA PÁGINA
 # ============================================================
 st.set_page_config(
-    page_title="Falcão Jurídico",
+    page_title="Falcon",
     page_icon="🦅",
-    layout="centered"
+    layout="wide"
 )
 
-# CSS clean (estilo chat moderno)
+# ============================================================
+# CSS (layout estilo premium / clean)
+# ============================================================
 st.markdown("""
 <style>
+/* Esconde elementos padrão */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 header {visibility: hidden;}
 
-.block-container {
-    max-width: 900px;
-    padding-top: 1.0rem;
-    padding-bottom: 5rem;
+/* Fundo geral */
+[data-testid="stAppViewContainer"] {
+    background: linear-gradient(180deg, #f4f6f9 0%, #eef1f5 100%);
 }
 
-.app-title {
-    font-size: 1.35rem;
-    font-weight: 700;
-    margin-bottom: 0.15rem;
+/* Sidebar (estilo escuro premium) */
+[data-testid="stSidebar"] {
+    background: radial-gradient(circle at 20% 20%, rgba(255,177,64,0.10) 0%, rgba(255,177,64,0.00) 35%),
+                linear-gradient(180deg, #0b1118 0%, #0f1722 100%);
+    border-right: 1px solid rgba(255,255,255,0.06);
 }
 
-.app-subtitle {
-    color: #6b7280;
-    font-size: 0.92rem;
-    margin-bottom: 0.8rem;
+[data-testid="stSidebar"] * {
+    color: #f3f4f6 !important;
 }
 
-.toolbar-wrap {
-    border: 1px solid rgba(128,128,128,0.25);
-    border-radius: 14px;
-    padding: 8px 10px;
-    margin-bottom: 10px;
+/* Botões da sidebar */
+[data-testid="stSidebar"] .stButton > button,
+[data-testid="stSidebar"] .stLinkButton > a {
+    width: 100%;
+    justify-content: flex-start;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.08);
     background: rgba(255,255,255,0.02);
+    color: #f9fafb !important;
+    padding: 0.6rem 0.8rem;
+}
+[data-testid="stSidebar"] .stButton > button:hover,
+[data-testid="stSidebar"] .stLinkButton > a:hover {
+    border-color: rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.05);
+}
+
+/* Área principal */
+.main-wrap {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 8px 0 100px 0;
+}
+
+/* Mensagens */
+.chat-list {
+    margin-top: 8px;
+}
+
+.msg-row {
+    display: flex;
+    margin: 10px 0;
+    width: 100%;
+}
+
+.msg-row.user {
+    justify-content: flex-end;
+}
+
+.msg-row.assistant {
+    justify-content: flex-start;
+}
+
+.bubble {
+    max-width: 78%;
+    border-radius: 14px;
+    padding: 12px 14px;
+    line-height: 1.45;
+    font-size: 0.97rem;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+    white-space: pre-wrap;
+}
+
+.bubble.user {
+    background: linear-gradient(180deg, #083b7a 0%, #072f63 100%);
+    color: #ffffff;
+    border: 1px solid rgba(255,255,255,0.08);
+}
+
+.bubble.assistant {
+    background: #ffffff;
+    color: #111827;
+    border: 1px solid rgba(15,23,42,0.08);
+}
+
+.bubble .label {
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+/* Empty state */
+.empty-state {
+    margin-top: 80px;
+    text-align: center;
+    color: #6b7280;
+    font-size: 0.95rem;
+}
+
+/* Barra de anexos (compacta) */
+.attach-wrap {
+    position: sticky;
+    bottom: 86px;
+    z-index: 10;
+    margin-top: 8px;
 }
 
 .chips-wrap {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin-top: 4px;
-    margin-bottom: 8px;
-}
-.chip {
-    border: 1px solid rgba(128,128,128,0.35);
-    border-radius: 999px;
-    padding: 4px 10px;
-    font-size: 0.82rem;
-    color: #374151;
-    background: rgba(0,0,0,0.02);
+    margin: 0 auto;
+    max-width: 820px;
+    padding: 0 6px;
 }
 
-.small-muted {
-    color: #6b7280;
+.chip {
+    border: 1px solid rgba(15,23,42,0.12);
+    border-radius: 999px;
+    padding: 5px 10px;
     font-size: 0.82rem;
+    background: rgba(255,255,255,0.8);
+    color: #374151;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+}
+
+/* Composer */
+.composer-wrap {
+    position: sticky;
+    bottom: 14px;
+    z-index: 20;
+    margin-top: 8px;
+}
+
+.composer-card {
+    max-width: 820px;
+    margin: 0 auto;
+    border: 1px solid rgba(15,23,42,0.10);
+    background: rgba(255,255,255,0.90);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+    box-shadow: 0 8px 30px rgba(15,23,42,0.10);
+    padding: 6px;
+}
+
+/* inputs internos */
+.composer-card [data-testid="stTextInput"] > div > div input {
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    font-size: 0.98rem;
+}
+
+.composer-card .stButton > button {
+    border-radius: 12px !important;
+    border: 1px solid rgba(15,23,42,0.10) !important;
+    background: #fff !important;
+    color: #111827 !important;
+    height: 42px;
+}
+
+.composer-card .stButton > button[kind="primary"] {
+    background: #0b3b7f !important;
+    color: white !important;
+    border-color: transparent !important;
+}
+
+/* popover botão importar */
+.composer-card .stPopover > button {
+    border-radius: 12px !important;
+    border: 1px solid rgba(15,23,42,0.10) !important;
+    background: #fff !important;
+    height: 42px;
+}
+
+/* Logo/brand sidebar */
+.brand-wrap {
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-top: 4px;
+    margin-bottom: 14px;
+}
+.brand-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,193,77,0.35);
+    background: rgba(255,193,77,0.08);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size: 22px;
+}
+.brand-text {
+    display:flex;
+    flex-direction:column;
+    line-height:1.1;
+}
+.brand-text .name {
+    font-weight:700;
+    color:#f8fafc;
+    font-size: 1.05rem;
+}
+.brand-text .sub {
+    color:#94a3b8;
+    font-size: .75rem;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================
-# HEADER
-# ============================================================
-st.markdown('<div class="app-title">🦅 Falcão Jurídico</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="app-subtitle">Assistente jurídico e professor particular com análise de anexos e conversa fluida.</div>',
-    unsafe_allow_html=True
-)
-
-# ============================================================
-# SECRETS / CHAVE
+# CONFIG DE API / CLIENTE
 # ============================================================
 API_KEY = st.secrets.get("GEMINI_API_KEY")
 LIVE_URL = st.secrets.get("LIVE_URL", "http://localhost:8000/live")
@@ -101,22 +253,21 @@ def get_client(api_key: str):
 client = get_client(API_KEY)
 
 # ============================================================
-# CONFIGS DO ASSISTENTE
+# CONFIG ASSISTENTE
 # ============================================================
-DEFAULT_MODEL = "gemini-2.5-flash-lite"  # free
+DEFAULT_MODEL = "gemini-2.5-flash-lite"
 DEFAULT_TEMP = 0.6
 
 INSTRUCAO_MESTRA = """
-Você é o meu Assistente Pessoal, Jurídico e Professor Particular.
+Você é o Falcão, meu assistente jurídico e professor particular.
 
 ESTILO:
 - Fale em português do Brasil.
-- Responda de forma natural, fluida e humana, como um chat moderno.
-- Evite tom robótico ou formal demais.
-- Só use listas quando realmente ajudarem.
-- Em temas jurídicos, explique de forma didática, clara e prática.
-- Se eu enviar documentos, imagens, áudio ou vídeo, analise o conteúdo com organização.
-- Quando for útil, organize em: fatos, questões jurídicas, riscos e estratégia.
+- Responda de forma natural, fluida e humana.
+- Evite tom robótico.
+- Em temas jurídicos, explique com clareza e didática.
+- Se eu enviar documentos, imagens, áudio ou vídeo, analise com organização.
+- Quando útil, organize em: fatos, questões jurídicas, riscos e estratégia.
 
 CUIDADOS:
 - Não invente leis, artigos, súmulas ou precedentes.
@@ -156,8 +307,11 @@ if "last_response" not in st.session_state:
 if "uploader_key" not in st.session_state:
     st.session_state.uploader_key = 0
 
+if "show_history" not in st.session_state:
+    st.session_state.show_history = False
+
 # ============================================================
-# UTILITÁRIOS DE CONVERSÃO (DOCX / XLSX -> TEXTO)
+# UTILITÁRIOS (DOCX/XLSX -> TXT)
 # ============================================================
 def docx_to_text(file_bytes: bytes) -> str:
     doc = Document(io.BytesIO(file_bytes))
@@ -195,10 +349,6 @@ def xlsx_to_text(file_bytes: bytes, max_rows_per_sheet: int = 200, max_cols: int
     return "\n".join(lines).strip()
 
 def normalize_uploaded_file_to_temp(uploaded_file):
-    """
-    Converte alguns formatos localmente (DOCX/XLSX -> TXT)
-    e devolve um arquivo temporário pronto para upload no Gemini Files API.
-    """
     raw = uploaded_file.getvalue()
     ext = Path(uploaded_file.name).suffix.lower()
 
@@ -221,7 +371,6 @@ def normalize_uploaded_file_to_temp(uploaded_file):
     if ext == ".doc":
         raise ValueError(f"{uploaded_file.name}: formato .doc antigo. Converta para .docx ou PDF.")
 
-    # PDF, imagem, áudio, vídeo, txt etc.
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext if ext else ".bin")
     tmp.write(raw)
     tmp.flush()
@@ -260,7 +409,6 @@ def upload_attachments(files):
             labels.append(label)
 
         return refs, labels
-
     finally:
         for p in temp_paths:
             try:
@@ -269,34 +417,68 @@ def upload_attachments(files):
                 pass
 
 # ============================================================
-# STREAM DE RESPOSTA
+# RENDER DE BOLHAS
 # ============================================================
-def stream_response(chat, user_text: str, file_refs=None):
-    file_refs = file_refs or []
-    st.session_state.last_response = ""
+def render_bubble(role: str, content: str):
+    safe = html.escape(content).replace("\n", "<br>")
+    if role == "assistant":
+        label = '<div class="label">Mestre:</div>'
+    else:
+        label = ""
+    st.markdown(
+        f"""
+        <div class="msg-row {role}">
+          <div class="bubble {role}">
+            {label}
+            {safe}
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-    payload = [*file_refs, user_text] if file_refs else user_text
-    chunks = []
-
-    for chunk in chat.send_message_stream(payload):
-        txt = getattr(chunk, "text", None)
-        if txt:
-            chunks.append(txt)
-            yield txt
-
-    st.session_state.last_response = "".join(chunks).strip()
+def render_bubble_placeholder(role: str, content: str, placeholder):
+    safe = html.escape(content).replace("\n", "<br>")
+    label = '<div class="label">Mestre:</div>' if role == "assistant" else ""
+    placeholder.markdown(
+        f"""
+        <div class="msg-row {role}">
+          <div class="bubble {role}">
+            {label}
+            {safe}
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 # ============================================================
-# TOOLBAR (IMPORTAR / CONFIG / LIVE)
+# SIDEBAR (estilo da imagem)
 # ============================================================
-st.markdown('<div class="toolbar-wrap">', unsafe_allow_html=True)
-col_a, col_b, col_c, col_d = st.columns([1.2, 0.8, 1.3, 2.7])
+with st.sidebar:
+    st.markdown("""
+    <div class="brand-wrap">
+      <div class="brand-icon">🦅</div>
+      <div class="brand-text">
+        <div class="name">Falcon</div>
+        <div class="sub">Assistente Jurídico</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-with col_a:
-    with st.popover("📎 Importar", use_container_width=True):
-        st.markdown("**Anexar arquivos**")
-        st.caption("Documentos, imagens, áudio, vídeo e outros")
-        selected_files = st.file_uploader(
+    if st.button("➕  Nova Conversa", use_container_width=True):
+        st.session_state.chat = create_chat(st.session_state.model_name, st.session_state.temperature)
+        st.session_state.messages = []
+        st.session_state.last_response = ""
+        st.rerun()
+
+    if st.button("🕘  Histórico", use_container_width=True):
+        st.session_state.show_history = not st.session_state.show_history
+
+    # Documentos em popover (sem poluir)
+    with st.popover("📄  Documentos", use_container_width=True):
+        st.caption("Importe anexos para a próxima mensagem")
+        selected_files_sidebar = st.file_uploader(
             "Anexar",
             accept_multiple_files=True,
             type=[
@@ -310,10 +492,9 @@ with col_a:
             label_visibility="collapsed",
             key=f"uploader_{st.session_state.uploader_key}"
         )
-        st.caption("Os anexos serão enviados com a próxima mensagem.")
+        st.caption("Os anexos ficam prontos para envio no chat.")
 
-with col_b:
-    with st.popover("⚙️", use_container_width=True):
+    with st.popover("⚙️  Configurações", use_container_width=True):
         new_model = st.selectbox(
             "Modelo",
             ["gemini-2.5-flash-lite", "gemini-2.5-flash"],
@@ -321,7 +502,7 @@ with col_b:
         )
         new_temp = st.slider("Criatividade", 0.0, 1.0, float(st.session_state.temperature), 0.1)
 
-        if st.button("Aplicar e reiniciar", use_container_width=True):
+        if st.button("Aplicar", use_container_width=True):
             st.session_state.model_name = new_model
             st.session_state.temperature = new_temp
             st.session_state.chat = create_chat(new_model, new_temp)
@@ -329,68 +510,130 @@ with col_b:
             st.session_state.last_response = ""
             st.rerun()
 
-        if st.button("Limpar conversa", use_container_width=True):
-            st.session_state.chat = create_chat(st.session_state.model_name, st.session_state.temperature)
-            st.session_state.messages = []
-            st.session_state.last_response = ""
-            st.rerun()
+    st.link_button("🎙️  Falcon Live", LIVE_URL, use_container_width=True)
 
-with col_c:
-    st.link_button("🎙️ Falcão Live", LIVE_URL, use_container_width=True)
+    if st.session_state.show_history:
+        st.markdown("---")
+        st.caption("Histórico (sessão atual)")
+        user_msgs = [m["content"] for m in st.session_state.messages if m["role"] == "user"]
+        if not user_msgs:
+            st.caption("Sem mensagens ainda.")
+        else:
+            for i, txt in enumerate(user_msgs[-8:], 1):
+                preview = txt.replace("\n", " ")
+                if len(preview) > 45:
+                    preview = preview[:45] + "..."
+                st.caption(f"{i}. {preview}")
 
-with col_d:
-    st.markdown('<div class="small-muted">Visão, precisão e estratégia para seus casos.</div>', unsafe_allow_html=True)
+# arquivos anexados vindos da sidebar
+selected_files = locals().get("selected_files_sidebar") or []
+
+# ============================================================
+# MAIN UI
+# ============================================================
+st.markdown('<div class="main-wrap">', unsafe_allow_html=True)
+
+# Histórico visual
+st.markdown('<div class="chat-list">', unsafe_allow_html=True)
+
+if not st.session_state.messages:
+    st.markdown(
+        """
+        <div class="empty-state">
+            Posso analisar documentos, imagens, áudios e vídeos.<br>
+            Pergunte algo ao Mestre ou envie anexos para análise.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+else:
+    for msg in st.session_state.messages:
+        render_bubble(msg["role"], msg["content"])
 
 st.markdown('</div>', unsafe_allow_html=True)
 
-selected_files = locals().get("selected_files") or []
-
-# Chips dos anexos
+# Chips de anexos (compactos)
+st.markdown('<div class="attach-wrap">', unsafe_allow_html=True)
 if selected_files:
-    chips = "".join([f'<span class="chip">📄 {f.name}</span>' for f in selected_files])
+    chips = "".join([f'<span class="chip">📎 {html.escape(f.name)}</span>' for f in selected_files])
     st.markdown(f'<div class="chips-wrap">{chips}</div>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================
-# HISTÓRICO
+# COMPOSER (barra estilo da imagem)
 # ============================================================
-if not st.session_state.messages:
-    st.info("Posso analisar documentos, imagens, áudios e vídeos. Me diga o que você precisa.")
+st.markdown('<div class="composer-wrap"><div class="composer-card">', unsafe_allow_html=True)
 
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+with st.form("composer_form", clear_on_submit=True):
+    c1, c2, c3 = st.columns([7.0, 1.6, 0.9])
+
+    with c1:
+        pergunta = st.text_input(
+            "Pergunta",
+            placeholder="Pergunte algo ao Mestre...",
+            label_visibility="collapsed"
+        )
+
+    with c2:
+        st.link_button("🎙️ Falcon Live", LIVE_URL, use_container_width=True)
+
+    with c3:
+        enviar = st.form_submit_button("➤", use_container_width=True, type="primary")
+
+st.markdown('</div></div>', unsafe_allow_html=True)
 
 # ============================================================
-# INPUT + RESPOSTA
+# ENVIO / RESPOSTA
 # ============================================================
-pergunta = st.chat_input("Pergunte algo jurídico ou peça para analisar os anexos...")
+if enviar and pergunta.strip():
+    pergunta = pergunta.strip()
 
-if pergunta:
     user_display = pergunta
     if selected_files:
-        user_display += "\n\n📎 **Anexos enviados:** " + ", ".join([f.name for f in selected_files])
+        user_display += "\n\n📎 Anexos enviados: " + ", ".join([f.name for f in selected_files])
 
+    # adiciona usuário
     st.session_state.messages.append({"role": "user", "content": user_display})
 
-    with st.chat_message("user"):
-        st.markdown(user_display)
+    # renderiza bolha do usuário imediatamente
+    render_bubble("user", user_display)
 
-    with st.chat_message("assistant"):
-        try:
-            refs = []
-            if selected_files:
-                with st.spinner("🦅 Lendo anexos..."):
-                    refs, labels = upload_attachments(selected_files)
-                st.caption("✅ " + " • ".join(labels))
+    # placeholder da resposta para streaming visual
+    response_placeholder = st.empty()
 
-            st.write_stream(stream_response(st.session_state.chat, pergunta, refs))
+    try:
+        refs = []
+        if selected_files:
+            with st.spinner("🦅 Lendo anexos..."):
+                refs, labels = upload_attachments(selected_files)
 
-            final_text = st.session_state.last_response or "Não consegui responder agora. Tenta reformular."
-            st.session_state.messages.append({"role": "assistant", "content": final_text})
+            # mostra um mini aviso no chat (assistente)
+            info_txt = "✅ Anexos processados: " + " • ".join(labels)
+            st.session_state.messages.append({"role": "assistant", "content": info_txt})
+            render_bubble("assistant", info_txt)
 
-            # limpa anexos após envio
-            st.session_state.uploader_key += 1
-            st.rerun()
+        payload = [*refs, pergunta] if refs else pergunta
 
-        except Exception as e:
-            st.error(f"❌ Erro: {e}")
+        chunks = []
+        for chunk in st.session_state.chat.send_message_stream(payload):
+            txt = getattr(chunk, "text", None)
+            if txt:
+                chunks.append(txt)
+                parcial = "".join(chunks)
+                render_bubble_placeholder("assistant", parcial, response_placeholder)
+
+        final_text = "".join(chunks).strip() or "Não consegui responder agora. Tenta reformular."
+        st.session_state.messages.append({"role": "assistant", "content": final_text})
+
+        # limpa anexos
+        st.session_state.uploader_key += 1
+
+        # rerun pra estabilizar UI (chips somem)
+        st.rerun()
+
+    except Exception as e:
+        err = f"❌ Erro: {e}"
+        render_bubble_placeholder("assistant", err, response_placeholder)
+        st.session_state.messages.append({"role": "assistant", "content": err})
+
+st.markdown('</div>', unsafe_allow_html=True)
