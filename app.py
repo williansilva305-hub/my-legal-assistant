@@ -1,6 +1,3 @@
-import streamlit as st
-import google.generativeai as genai
-
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
     page_title="My Legal Assistant", 
@@ -8,13 +5,13 @@ st.set_page_config(
     layout="centered"
 )
 
-# Estilo CSS para deixar o visual mais moderno
+# Estilo CSS corrigido
 st.markdown("""
     <style>
     .stChatMessage { border-radius: 15px; margin-bottom: 10px; }
     .main { background-color: #f8f9fa; }
     </style>
-    """, unsafe_allow_config=True)
+    """, unsafe_allow_html=True) # <-- O segredo estava aqui!
 
 # --- 2. BARRA LATERAL (SIDEBAR) ---
 with st.sidebar:
