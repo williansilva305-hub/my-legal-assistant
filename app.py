@@ -2,6 +2,7 @@ import io
 import os
 import time
 import html
+import base64
 import tempfile
 from pathlib import Path
 
@@ -12,229 +13,340 @@ from google.genai import types
 from docx import Document
 from openpyxl import load_workbook
 
+
 # ============================================================
-# CONFIG DA PÁGINA
+# CONFIG
 # ============================================================
-st.set_page_config(
-    page_title="Falcon",
-    page_icon="🦅",
-    layout="wide"
+st.set_page_config(page_title="Falcon", page_icon="🦅", layout="wide")
+
+
+# ============================================================
+# HELPERS VISUAIS
+# ============================================================
+def get_logo_data_uri() -> str | None:
+    """
+    Procura o logo em caminhos comuns do projeto e devolve data URI.
+    Esperado: assets/falcon_logo.png
+    """
+    candidates = [
+        Path("assets/falcon_logo.png"),
+        Path("falcon_logo.png"),
+        Path("assets/logo.png"),
+    ]
+    for p in candidates:
+        if p.exists() and p.is_file():
+            mime = "image/png"
+            if p.suffix.lower() in [".jpg", ".jpeg"]:
+                mime = "image/jpeg"
+            raw = p.read_bytes()
+            b64 = base64.b64encode(raw).decode("utf-8")
+            return f"data:{mime};base64,{b64}"
+    return None
+
+
+LOGO_URI = get_logo_data_uri()
+
+
+# ============================================================
+# CSS (estilo mock)
+# ============================================================
+logo_html_sidebar = (
+    f'<img src="{LOGO_URI}" class="falcon-logo-img" />'
+    if LOGO_URI
+    else '<div class="falcon-logo-fallback">🦅</div>'
 )
 
-# ============================================================
-# CSS (premium + estável)
-# ============================================================
+logo_html_top = (
+    f'<img src="{LOGO_URI}" class="top-logo-img" />'
+    if LOGO_URI
+    else '<div class="top-logo-fallback">⚖️</div>'
+)
+
 st.markdown(
-    """
+    f"""
 <style>
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
+/* Esconde elementos padrão */
+#MainMenu, footer, header {{
+    visibility: hidden;
+}}
+[data-testid="collapsedControl"] {{
+    display: none;
+}}
 
-[data-testid="stAppViewContainer"] {
-    background: linear-gradient(180deg, #f4f6f9 0%, #eef1f5 100%);
-}
+/* Fundo geral */
+[data-testid="stAppViewContainer"] {{
+    background: #f2f4f8;
+}}
 
-/* Sidebar */
-[data-testid="stSidebar"] {
+/* Margens gerais */
+.block-container {{
+    padding-top: 0.6rem !important;
+    padding-bottom: 0.6rem !important;
+}}
+
+/* ========== SIDEBAR (escura) ========== */
+[data-testid="stSidebar"] {{
     background:
-      radial-gradient(circle at 20% 20%, rgba(255,177,64,0.10) 0%, rgba(255,177,64,0.00) 35%),
-      linear-gradient(180deg, #0b1118 0%, #0f1722 100%);
-    border-right: 1px solid rgba(255,255,255,0.06);
-}
-[data-testid="stSidebar"] * {
+      radial-gradient(circle at 15% 10%, rgba(255,191,82,0.10) 0%, rgba(255,191,82,0.00) 35%),
+      linear-gradient(180deg, #101826 0%, #0b1018 100%);
+    border-right: 1px solid rgba(255,255,255,0.05);
+}}
+[data-testid="stSidebar"] * {{
     color: #f3f4f6 !important;
-}
+}}
+
+.sidebar-brand {{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 4px 8px 4px;
+    margin-bottom: 8px;
+}}
+.falcon-logo-img {{
+    width: 38px;
+    height: 38px;
+    object-fit: contain;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.02);
+}}
+.falcon-logo-fallback {{
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.05);
+    font-size: 20px;
+}}
+.sidebar-brand-text {{
+    display: flex;
+    flex-direction: column;
+    line-height: 1.1;
+}}
+.sidebar-brand-text .title {{
+    font-weight: 700;
+    font-size: 1rem;
+    color: #fff;
+}}
+.sidebar-brand-text .sub {{
+    font-size: .75rem;
+    color: #9aa5b5;
+}}
+
 [data-testid="stSidebar"] .stButton > button,
-[data-testid="stSidebar"] .stLinkButton > a {
+[data-testid="stSidebar"] .stLinkButton > a,
+[data-testid="stSidebar"] .stPopover > button {{
     width: 100%;
     justify-content: flex-start;
     border-radius: 12px;
     border: 1px solid rgba(255,255,255,0.08);
-    background: rgba(255,255,255,0.02);
+    background: rgba(255,255,255,0.03);
     color: #f9fafb !important;
-    padding: 0.6rem 0.8rem;
-}
+    padding: 0.65rem 0.85rem;
+    box-shadow: none !important;
+}}
 [data-testid="stSidebar"] .stButton > button:hover,
-[data-testid="stSidebar"] .stLinkButton > a:hover {
-    border-color: rgba(255,255,255,0.18);
-    background: rgba(255,255,255,0.05);
-}
+[data-testid="stSidebar"] .stLinkButton > a:hover,
+[data-testid="stSidebar"] .stPopover > button:hover {{
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.16);
+}}
 
-/* Marca sidebar */
-.brand-wrap {
-    display:flex;
-    align-items:center;
-    gap:10px;
-    margin-top: 4px;
-    margin-bottom: 14px;
-}
-.brand-icon {
-    width: 42px;
-    height: 42px;
-    border-radius: 12px;
-    border: 1px solid rgba(255,193,77,0.35);
-    background: rgba(255,193,77,0.08);
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    font-size: 22px;
-}
-.brand-text {
-    display:flex;
-    flex-direction:column;
-    line-height:1.1;
-}
-.brand-text .name {
-    font-weight:700;
-    color:#f8fafc;
-    font-size: 1.05rem;
-}
-.brand-text .sub {
-    color:#94a3b8;
-    font-size: .75rem;
-}
-
-/* Área central */
-.main-title {
+/* ========== TOPO AZUL ========== */
+.falcon-topbar {{
+    background: linear-gradient(90deg, #0f2f7e 0%, #0d43b4 100%);
+    border-radius: 12px 12px 0 0;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 8px 18px rgba(15,47,126,0.18);
+}}
+.falcon-topbar-left {{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}}
+.top-logo-img {{
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+}}
+.top-logo-fallback {{
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 18px;
+}}
+.falcon-topbar-title {{
+    color: #fff;
     font-weight: 700;
-    color: #0f172a;
-    font-size: 1.05rem;
-    margin-bottom: 4px;
-}
-.main-subtitle {
-    color: #64748b;
-    font-size: 0.86rem;
-    margin-bottom: 10px;
-}
+    font-size: 0.98rem;
+}}
+.falcon-avatar {{
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.25);
+    border: 1px solid rgba(255,255,255,0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 15px;
+}}
 
-/* Ações topo */
-.top-actions {
+.falcon-subbar {{
+    background: #eef1f5;
+    color: #4b5563;
+    border: 1px solid #dfe5ee;
+    border-top: none;
+    border-radius: 0 0 12px 12px;
+    padding: 8px 14px;
+    margin-bottom: 12px;
+    font-size: 0.86rem;
+}}
+
+/* ========== CHAT CARD ========== */
+.chat-card {{
+    background: #ffffff;
+    border: 1px solid #dfe5ee;
+    border-radius: 14px;
+    box-shadow: 0 8px 24px rgba(15,23,42,0.06);
+    padding: 12px;
+}}
+
+.chat-scroll {{
+    height: calc(100vh - 355px);
+    min-height: 320px;
+    max-height: calc(100vh - 355px);
+    overflow-y: auto;
+    padding: 4px 4px 8px 4px;
+    scroll-behavior: smooth;
+}}
+
+/* mensagens */
+.msg-row {{
+    display: flex;
+    width: 100%;
+    margin: 10px 0;
+}}
+.msg-row.user {{
+    justify-content: flex-end;
+}}
+.msg-row.assistant {{
+    justify-content: flex-start;
+}}
+
+.bubble {{
+    max-width: 78%;
+    border-radius: 14px;
+    padding: 10px 12px;
+    line-height: 1.42;
+    font-size: 0.96rem;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}}
+.bubble.user {{
+    background: linear-gradient(180deg, #0d4aa5 0%, #0a3781 100%);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.16);
+    box-shadow: 0 4px 12px rgba(10,55,129,0.18);
+}}
+.bubble.assistant {{
+    background: #eceff4;
+    color: #111827;
+    border: 1px solid #e3e8ef;
+}}
+.bubble .label {{
+    font-weight: 700;
+    margin-bottom: 4px;
+    color: #111827;
+}}
+
+.empty-state {{
+    color: #6b7280;
+    text-align: center;
+    padding-top: 80px;
+    font-size: 0.95rem;
+}}
+
+/* Chips anexos */
+.chips-wrap {{
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 8px 2px 10px 2px;
+}}
+.chip {{
+    border-radius: 999px;
+    border: 1px solid #d9e1ea;
+    background: #f9fbfd;
+    color: #334155;
+    padding: 4px 10px;
+    font-size: 0.8rem;
+}}
+
+/* Top actions (Live) */
+.top-actions {{
     display: flex;
     justify-content: flex-end;
     margin-bottom: 8px;
-}
-.live-pill {
+}}
+.live-pill {{
     display: inline-flex;
     align-items: center;
     gap: 6px;
     border-radius: 999px;
-    border: 1px solid rgba(15,23,42,0.10);
-    background: rgba(255,255,255,0.92);
+    border: 1px solid #d9e1ea;
+    background: #ffffff;
     color: #0f172a;
     text-decoration: none;
     padding: 8px 12px;
-    font-size: 0.9rem;
-}
-.live-pill:hover {
-    border-color: rgba(15,23,42,0.20);
-    background: #fff;
-}
+    font-size: 0.88rem;
+}}
+.live-pill:hover {{
+    background: #f8fafc;
+    border-color: #cdd7e3;
+}}
 
-/* Painel do chat */
-.chat-shell {
-    border: 1px solid rgba(15,23,42,0.08);
-    background: rgba(255,255,255,0.55);
-    border-radius: 16px;
-    padding: 10px;
-    box-shadow: 0 8px 30px rgba(15,23,42,0.05);
-}
-.chat-scroll {
-    height: calc(100vh - 320px);
-    min-height: 340px;
-    max-height: calc(100vh - 320px);
-    overflow-y: auto;
-    padding: 4px 4px 8px 4px;
-    scroll-behavior: smooth;
-}
-
-/* Bolhas */
-.msg-row {
-    display: flex;
-    margin: 10px 0;
-    width: 100%;
-}
-.msg-row.user {
-    justify-content: flex-end;
-}
-.msg-row.assistant {
-    justify-content: flex-start;
-}
-.bubble {
-    max-width: 78%;
-    border-radius: 14px;
-    padding: 12px 14px;
-    line-height: 1.45;
-    font-size: 0.97rem;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.08);
-    white-space: pre-wrap;
-    word-wrap: break-word;
-}
-.bubble.user {
-    background: linear-gradient(180deg, #083b7a 0%, #072f63 100%);
-    color: #ffffff;
-    border: 1px solid rgba(255,255,255,0.08);
-}
-.bubble.assistant {
-    background: #ffffff;
-    color: #111827;
-    border: 1px solid rgba(15,23,42,0.08);
-}
-.bubble .label {
-    font-weight: 700;
-    margin-bottom: 4px;
-}
-
-/* Estado vazio */
-.empty-state {
-    margin-top: 80px;
-    text-align: center;
-    color: #6b7280;
-    font-size: 0.95rem;
-}
-
-/* Chips anexos */
-.chips-wrap {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 8px 0 6px 0;
-}
-.chip {
-    border: 1px solid rgba(15,23,42,0.12);
-    border-radius: 999px;
-    padding: 5px 10px;
-    font-size: 0.82rem;
-    background: rgba(255,255,255,0.90);
-    color: #374151;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.04);
-}
-
-/* st.chat_input */
-[data-testid="stChatInput"] {
-    background: transparent !important;
-}
-[data-testid="stChatInput"] textarea {
-    border-radius: 14px !important;
-    border: 1px solid rgba(15,23,42,0.10) !important;
-    background: rgba(255,255,255,0.95) !important;
-    box-shadow: 0 6px 24px rgba(15,23,42,0.08) !important;
-}
+/* Chat input (mantém estável e bonito) */
+[data-testid="stChatInput"] {{
+    margin-top: 8px;
+}}
+[data-testid="stChatInput"] textarea {{
+    border-radius: 12px !important;
+    border: 1px solid #d9e1ea !important;
+    background: #ffffff !important;
+    box-shadow: 0 4px 16px rgba(15,23,42,0.06) !important;
+    min-height: 44px !important;
+}}
+[data-testid="stChatInput"] button {{
+    border-radius: 10px !important;
+}}
 
 /* Responsivo */
-@media (max-width: 900px) {
-    .chat-scroll {
-        height: calc(100vh - 360px);
-        max-height: calc(100vh - 360px);
-    }
-}
+@media (max-width: 900px) {{
+    .chat-scroll {{
+        height: calc(100vh - 395px);
+        max-height: calc(100vh - 395px);
+    }}
+    .falcon-subbar {{
+        font-size: 0.8rem;
+    }}
+}}
 </style>
 """,
     unsafe_allow_html=True,
 )
 
+
 # ============================================================
-# API / CLIENTE
+# GEMINI (FREE)
 # ============================================================
 API_KEY = st.secrets.get("GEMINI_API_KEY")
 LIVE_URL = st.secrets.get("LIVE_URL", "http://localhost:8000/live")
@@ -251,10 +363,7 @@ def get_client(api_key: str):
 
 client = get_client(API_KEY)
 
-# ============================================================
-# CONFIG ASSISTENTE
-# ============================================================
-DEFAULT_MODEL = "gemini-2.5-flash-lite"  # free
+DEFAULT_MODEL = "gemini-2.5-flash-lite"  # modelo free
 DEFAULT_TEMP = 0.6
 
 INSTRUCAO_MESTRA = """
@@ -288,7 +397,7 @@ def create_chat(model_name: str, temperature: float):
 
 
 # ============================================================
-# SESSION STATE
+# SESSION
 # ============================================================
 if "model_name" not in st.session_state:
     st.session_state.model_name = DEFAULT_MODEL
@@ -310,7 +419,7 @@ if "show_history" not in st.session_state:
 
 
 # ============================================================
-# UTILITÁRIOS (DOCX/XLSX -> TEXTO)
+# UTILIDADES DE ARQUIVOS
 # ============================================================
 def docx_to_text(file_bytes: bytes) -> str:
     doc = Document(io.BytesIO(file_bytes))
@@ -422,7 +531,7 @@ def upload_attachments(files):
 
 
 # ============================================================
-# RENDER DO CHAT + AUTO-SCROLL
+# CHAT HTML (fixo + scroll)
 # ============================================================
 def build_chat_html(messages, partial_assistant_text=None):
     rows = []
@@ -439,7 +548,7 @@ def build_chat_html(messages, partial_assistant_text=None):
             role = msg["role"]
             content = msg["content"]
             safe = html.escape(content).replace("\n", "<br>")
-            label = '<div class="label">Mestre:</div>' if role == "assistant" else ""
+            label = '<div class="label">Falcão:</div>' if role == "assistant" else ""
 
             rows.append(
                 f'<div class="msg-row {role}">'
@@ -451,13 +560,13 @@ def build_chat_html(messages, partial_assistant_text=None):
             safe = html.escape(partial_assistant_text).replace("\n", "<br>")
             rows.append(
                 '<div class="msg-row assistant">'
-                '  <div class="bubble assistant"><div class="label">Mestre:</div>'
+                '  <div class="bubble assistant"><div class="label">Falcão:</div>'
                 f'  {safe}</div>'
                 '</div>'
             )
 
     return (
-        '<div class="chat-shell">'
+        '<div class="chat-card">'
         '<div id="falcon-chat-scroll" class="chat-scroll">'
         + "".join(rows)
         + '<div id="falcon-chat-bottom"></div>'
@@ -472,15 +581,13 @@ def render_chat(chat_placeholder, messages, partial_assistant_text=None):
         unsafe_allow_html=True,
     )
 
-    # força scroll para o fim dentro do painel
+    # Auto-scroll no painel interno
     components.html(
         """
 <script>
   const d = window.parent.document;
   const el = d.getElementById("falcon-chat-scroll");
-  if (el) {
-    el.scrollTop = el.scrollHeight;
-  }
+  if (el) { el.scrollTop = el.scrollHeight; }
 </script>
 """,
         height=0,
@@ -488,16 +595,16 @@ def render_chat(chat_placeholder, messages, partial_assistant_text=None):
 
 
 # ============================================================
-# SIDEBAR
+# SIDEBAR (estilo mock)
 # ============================================================
 with st.sidebar:
     st.markdown(
-        """
-<div class="brand-wrap">
-  <div class="brand-icon">🦅</div>
-  <div class="brand-text">
-    <div class="name">Falcon</div>
-    <div class="sub">Assistente Jurídico</div>
+        f"""
+<div class="sidebar-brand">
+  {logo_html_sidebar}
+  <div class="sidebar-brand-text">
+    <div class="title">Falcon</div>
+    <div class="sub">Legal Assistant</div>
   </div>
 </div>
 """,
@@ -509,13 +616,10 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
-    if st.button("🕘  Histórico", use_container_width=True):
-        st.session_state.show_history = not st.session_state.show_history
-
-    with st.popover("📄  Documentos", use_container_width=True):
-        st.caption("Importe anexos para a próxima mensagem")
+    with st.popover("📎  Importar Documentos", use_container_width=True):
+        st.caption("Anexe arquivos para a próxima mensagem")
         selected_files_sidebar = st.file_uploader(
-            "Anexar",
+            "Arquivos",
             accept_multiple_files=True,
             type=[
                 "pdf",
@@ -528,7 +632,10 @@ with st.sidebar:
             label_visibility="collapsed",
             key=f"uploader_{st.session_state.uploader_key}",
         )
-        st.caption("Os anexos ficam prontos para envio no chat.")
+        st.caption("Os anexos aparecem em chips acima do campo de mensagem.")
+
+    if st.button("🕘  Histórico", use_container_width=True):
+        st.session_state.show_history = not st.session_state.show_history
 
     with st.popover("⚙️  Configurações", use_container_width=True):
         new_model = st.selectbox(
@@ -545,46 +652,57 @@ with st.sidebar:
             st.session_state.messages = []
             st.rerun()
 
-    st.link_button("🎙️  Falcon Live", LIVE_URL, use_container_width=True)
-
     if st.session_state.show_history:
         st.markdown("---")
-        st.caption("Histórico (sessão atual)")
+        st.caption("Sessão atual")
         user_msgs = [m["content"] for m in st.session_state.messages if m["role"] == "user"]
         if not user_msgs:
             st.caption("Sem mensagens ainda.")
         else:
             for i, txt in enumerate(user_msgs[-8:], 1):
                 preview = txt.replace("\n", " ")
-                if len(preview) > 45:
-                    preview = preview[:45] + "..."
+                if len(preview) > 42:
+                    preview = preview[:42] + "..."
                 st.caption(f"{i}. {preview}")
 
 selected_files = locals().get("selected_files_sidebar") or []
 
+
 # ============================================================
-# MAIN
+# TOPO (igual ao mock)
 # ============================================================
-st.markdown('<div class="main-title">Falcon</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="main-subtitle">Visão, precisão e estratégia para seus casos.</div>',
+    f"""
+<div class="falcon-topbar">
+  <div class="falcon-topbar-left">
+    {logo_html_top}
+    <div class="falcon-topbar-title">My Legal Assistant</div>
+  </div>
+  <div class="falcon-avatar">👤</div>
+</div>
+<div class="falcon-subbar">Assistente jurídico e professor particular, com anexos e resposta fluida.</div>
+""",
     unsafe_allow_html=True,
 )
 
+# botão Falcon Live (estilo pill no topo do chat)
 st.markdown(
     f'<div class="top-actions"><a class="live-pill" href="{html.escape(LIVE_URL)}" target="_blank">🎙️ Falcon Live</a></div>',
     unsafe_allow_html=True,
 )
 
+# chat
 chat_placeholder = st.empty()
 render_chat(chat_placeholder, st.session_state.messages)
 
+# chips de anexos
 if selected_files:
     chips = "".join([f'<span class="chip">📎 {html.escape(f.name)}</span>' for f in selected_files])
     st.markdown(f'<div class="chips-wrap">{chips}</div>', unsafe_allow_html=True)
 
-# Input sempre visível
-pergunta = st.chat_input("Pergunte algo ao Mestre...")
+# campo de digitar (estável)
+pergunta = st.chat_input("Digite sua mensagem...")
+
 
 # ============================================================
 # ENVIO / STREAMING
@@ -603,7 +721,7 @@ if pergunta and pergunta.strip():
     try:
         refs = []
         if selected_files:
-            with st.spinner("🦅 Lendo anexos..."):
+            with st.spinner("🦅 Processando anexos..."):
                 refs, labels = upload_attachments(selected_files)
 
             info_txt = "✅ Anexos processados: " + " • ".join(labels)
@@ -623,7 +741,7 @@ if pergunta and pergunta.strip():
         final_text = "".join(chunks).strip() or "Não consegui responder agora. Tenta reformular."
         st.session_state.messages.append({"role": "assistant", "content": final_text})
 
-        # limpa anexos após envio
+        # limpa anexos depois do envio
         st.session_state.uploader_key += 1
 
         render_chat(chat_placeholder, st.session_state.messages)
