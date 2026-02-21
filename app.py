@@ -1,6 +1,7 @@
 import io
+import os
 import time
-import mimetypes
+import tempfile
 from pathlib import Path
 
 import streamlit as st
@@ -10,29 +11,84 @@ from docx import Document
 from openpyxl import load_workbook
 
 # ============================================================
-# 1) CONFIGURAÇÃO DA PÁGINA
+# CONFIG INICIAL
 # ============================================================
 st.set_page_config(
     page_title="My Legal Assistant",
     page_icon="⚖️",
-    layout="wide"
+    layout="centered"
 )
 
-st.title("⚖️ My Legal Assistant")
-st.markdown("Assistente jurídico + professor particular, com suporte a anexos (PDF, imagem, áudio, vídeo, documentos).")
+# CSS para deixar com visual mais clean (estilo chat moderno)
+st.markdown("""
+<style>
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
+
+.block-container {
+    max-width: 900px;
+    padding-top: 1.2rem;
+    padding-bottom: 6rem;
+}
+
+.app-title {
+    font-size: 1.35rem;
+    font-weight: 700;
+    margin-bottom: 0.15rem;
+}
+
+.app-subtitle {
+    color: #6b7280;
+    font-size: 0.92rem;
+    margin-bottom: 0.8rem;
+}
+
+.toolbar-wrap {
+    border: 1px solid rgba(128,128,128,0.25);
+    border-radius: 14px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+    background: rgba(255,255,255,0.02);
+}
+
+.chips-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+    margin-bottom: 6px;
+}
+.chip {
+    border: 1px solid rgba(128,128,128,0.35);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 0.82rem;
+    color: #374151;
+    background: rgba(0,0,0,0.02);
+}
+
+.small-muted {
+    color: #6b7280;
+    font-size: 0.82rem;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ============================================================
-# 2) CHAVE DA API
+# HEADER LIMPO
+# ============================================================
+st.markdown('<div class="app-title">⚖️ My Legal Assistant</div>', unsafe_allow_html=True)
+st.markdown('<div class="app-subtitle">Assistente jurídico e professor particular, com anexos e resposta fluida.</div>', unsafe_allow_html=True)
+
+# ============================================================
+# API KEY
 # ============================================================
 API_KEY = st.secrets.get("GEMINI_API_KEY")
 if not API_KEY:
-    st.error("❌ Falta configurar `GEMINI_API_KEY` no Streamlit Secrets.")
-    st.info('No Streamlit Cloud → Settings → Secrets:\n\nGEMINI_API_KEY = "SUA_CHAVE_AQUI"')
+    st.error("Falta configurar `GEMINI_API_KEY` no Streamlit Secrets.")
     st.stop()
 
-# ============================================================
-# 3) CLIENTE GEMINI
-# ============================================================
 @st.cache_resource
 def get_client(api_key: str):
     return genai.Client(api_key=api_key)
@@ -40,75 +96,50 @@ def get_client(api_key: str):
 client = get_client(API_KEY)
 
 # ============================================================
-# 4) SIDEBAR (MODELO / AJUSTES)
+# CONFIG / PROMPT
 # ============================================================
-with st.sidebar:
-    st.subheader("⚙️ Configurações")
-    model_name = st.selectbox(
-        "Modelo",
-        ["gemini-2.5-flash-lite", "gemini-2.5-flash"],
-        index=0
-    )
-    temperatura = st.slider("Temperatura", 0.0, 1.0, 0.6, 0.1)
-    st.caption("Flash-Lite = mais leve / Flash = respostas mais caprichadas")
+DEFAULT_MODEL = "gemini-2.5-flash-lite"  # free
+DEFAULT_TEMP = 0.6
 
-    st.markdown("---")
-    st.subheader("📎 Anexos suportados")
-    st.markdown(
-        "- PDF\n"
-        "- Imagens (jpg/png/webp/bmp)\n"
-        "- Áudio (mp3/wav/m4a/ogg/flac)\n"
-        "- Vídeo (mp4/mov/webm/mkv etc.)\n"
-        "- Texto / JSON / CSV / HTML / XML / RTF\n"
-        "- DOCX (convertido para texto)\n"
-        "- XLSX/XLSM (convertido para texto)\n"
-    )
-    st.caption("Arquivos enviados ao Gemini Files API são temporários (expiram).")
-
-# ============================================================
-# 5) PROMPT (ESTILO FLUIDO)
-# ============================================================
 INSTRUCAO_MESTRA = """
 Você é o meu Assistente Pessoal, Jurídico e Professor Particular.
 
 ESTILO:
 - Fale em português do Brasil.
-- Responda de forma natural, fluida, humana e didática.
-- Evite respostas robóticas e repetitivas.
-- Use listas só quando elas ajudarem de verdade.
-- Quando eu trouxer documentos/anexos, analise o conteúdo com clareza e organização.
-- Se for tema jurídico, explique como professor particular, com exemplos práticos.
-- Se eu estiver estudando, pode usar método socrático (uma pergunta por vez).
-- Se eu pedir análise de caso, organize em: fatos, pontos jurídicos, riscos e estratégia.
+- Responda de forma natural, fluida e humana, como um chat moderno.
+- Evite tom robótico ou formal demais.
+- Só use listas quando realmente ajudarem.
+- Em temas jurídicos, explique de forma didática, clara e prática.
+- Se eu enviar documentos, imagens, áudio ou vídeo, analise o conteúdo com organização.
 
-CUIDADOS JURÍDICOS:
-- Não invente lei, artigo, súmula ou precedente.
-- Se estiver em dúvida, diga que precisa confirmar.
+CUIDADOS:
+- Não invente leis, artigos, súmulas ou precedentes.
+- Se estiver em dúvida, diga com clareza.
 - Diferencie explicação educativa de orientação profissional definitiva.
 """
 
-# ============================================================
-# 6) ESTADO DA SESSÃO
-# ============================================================
-def iniciar_chat(selected_model: str):
+def create_chat(model_name: str, temperature: float):
     return client.chats.create(
-        model=selected_model,
+        model=model_name,
         config=types.GenerateContentConfig(
             system_instruction=INSTRUCAO_MESTRA,
-            temperature=temperatura,
+            temperature=temperature,
             top_p=0.95,
-            max_output_tokens=4096
+            max_output_tokens=4096,
         )
     )
 
-if "selected_model" not in st.session_state:
-    st.session_state.selected_model = model_name
+# ============================================================
+# SESSION STATE
+# ============================================================
+if "model_name" not in st.session_state:
+    st.session_state.model_name = DEFAULT_MODEL
 
-if "chat" not in st.session_state or st.session_state.selected_model != model_name:
-    st.session_state.selected_model = model_name
-    st.session_state.chat = iniciar_chat(model_name)
-    st.session_state.messages = []
-    st.session_state.last_response = ""
+if "temperature" not in st.session_state:
+    st.session_state.temperature = DEFAULT_TEMP
+
+if "chat" not in st.session_state:
+    st.session_state.chat = create_chat(st.session_state.model_name, st.session_state.temperature)
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -116,33 +147,25 @@ if "messages" not in st.session_state:
 if "last_response" not in st.session_state:
     st.session_state.last_response = ""
 
-# ============================================================
-# 7) UTILITÁRIOS DE DOCUMENTOS
-# ============================================================
-def guess_mime(uploaded_file) -> str:
-    # Streamlit normalmente preenche .type, mas nem sempre
-    mime = getattr(uploaded_file, "type", None) or ""
-    if mime:
-        return mime
-    guessed, _ = mimetypes.guess_type(uploaded_file.name)
-    return guessed or "application/octet-stream"
+if "uploader_key" not in st.session_state:
+    st.session_state.uploader_key = 0
 
-
+# ============================================================
+# UTILITÁRIOS DE DOCS
+# ============================================================
 def docx_to_text(file_bytes: bytes) -> str:
     doc = Document(io.BytesIO(file_bytes))
     parts = []
+
     for p in doc.paragraphs:
         txt = (p.text or "").strip()
         if txt:
             parts.append(txt)
 
-    # Também tenta capturar tabelas
     for table in doc.tables:
         parts.append("\n[TABELA]")
         for row in table.rows:
-            vals = []
-            for cell in row.cells:
-                vals.append((cell.text or "").replace("\n", " ").strip())
+            vals = [(c.text or "").replace("\n", " ").strip() for c in row.cells]
             parts.append(" | ".join(vals))
 
     return "\n".join(parts).strip()
@@ -150,241 +173,223 @@ def docx_to_text(file_bytes: bytes) -> str:
 
 def xlsx_to_text(file_bytes: bytes, max_rows_per_sheet: int = 200, max_cols: int = 20) -> str:
     wb = load_workbook(io.BytesIO(file_bytes), data_only=True)
-    chunks = []
+    lines = []
 
     for ws in wb.worksheets:
-        chunks.append(f"\n### PLANILHA: {ws.title}\n")
-        row_count = 0
-
+        lines.append(f"\n### PLANILHA: {ws.title}")
+        count = 0
         for row in ws.iter_rows(values_only=True):
-            if row_count >= max_rows_per_sheet:
-                chunks.append("[... linhas adicionais omitidas ...]")
+            if count >= max_rows_per_sheet:
+                lines.append("[... linhas omitidas ...]")
                 break
-
-            vals = []
-            for cell in row[:max_cols]:
-                vals.append("" if cell is None else str(cell))
-            # ignora linhas totalmente vazias
+            vals = ["" if c is None else str(c) for c in row[:max_cols]]
             if any(v.strip() for v in vals):
-                chunks.append(" | ".join(vals))
-                row_count += 1
+                lines.append(" | ".join(vals))
+                count += 1
 
-    return "\n".join(chunks).strip()
+    return "\n".join(lines).strip()
 
 
-def normalize_for_upload(uploaded_file):
+def normalize_uploaded_file_to_temp(uploaded_file):
     """
-    Retorna (bytes_io, mime_type, display_name, note)
-    Alguns formatos são convertidos localmente para texto.
+    Converte alguns formatos localmente (DOCX/XLSX -> TXT),
+    e retorna caminho temporário + label.
     """
     raw = uploaded_file.getvalue()
-    name = uploaded_file.name
-    ext = Path(name).suffix.lower()
-    mime = guess_mime(uploaded_file)
+    ext = Path(uploaded_file.name).suffix.lower()
 
-    # DOCX -> texto
+    # DOCX -> TXT
     if ext == ".docx":
-        text = docx_to_text(raw)
-        if not text:
-            text = "[Documento DOCX sem texto extraível]"
-        bio = io.BytesIO(text.encode("utf-8"))
-        bio.seek(0)
-        return bio, "text/plain", f"{name}.txt", "DOCX convertido para texto"
+        txt = docx_to_text(raw) or "[DOCX sem texto extraível]"
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
+        tmp.write(txt.encode("utf-8"))
+        tmp.flush()
+        tmp.close()
+        return tmp.name, f"{uploaded_file.name} (documento)"
 
-    # XLSX / XLSM -> texto tabular
+    # XLSX/XLSM -> TXT
     if ext in [".xlsx", ".xlsm"]:
-        text = xlsx_to_text(raw)
-        if not text:
-            text = "[Planilha sem conteúdo legível]"
-        bio = io.BytesIO(text.encode("utf-8"))
-        bio.seek(0)
-        return bio, "text/plain", f"{name}.txt", "Planilha convertida para texto"
+        txt = xlsx_to_text(raw) or "[Planilha sem conteúdo legível]"
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
+        tmp.write(txt.encode("utf-8"))
+        tmp.flush()
+        tmp.close()
+        return tmp.name, f"{uploaded_file.name} (planilha)"
 
-    # DOC antigo não é suportado nativamente aqui
+    # DOC antigo -> pedir conversão
     if ext == ".doc":
-        raise ValueError(
-            f"O arquivo {name} é .doc (formato antigo). "
-            "Converta para .docx ou PDF e tente novamente."
-        )
+        raise ValueError(f"{uploaded_file.name}: formato .doc antigo. Converta para .docx ou PDF.")
 
-    # Demais arquivos: envia como estão
-    bio = io.BytesIO(raw)
-    bio.seek(0)
-    return bio, mime, name, None
+    # Demais arquivos (pdf/imagem/áudio/vídeo/texto)
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext if ext else ".bin")
+    tmp.write(raw)
+    tmp.flush()
+    tmp.close()
+    return tmp.name, uploaded_file.name
 
 
-def wait_until_active(file_obj, timeout_seconds: int = 300):
-    """
-    Alguns arquivos (especialmente áudio/vídeo) passam por processamento.
-    Espera até ficar ACTIVE.
-    """
+def wait_file_active(file_obj, timeout_sec: int = 240):
     start = time.time()
     while True:
-        info = client.files.get(name=file_obj.name)
-        state = getattr(info, "state", None)
+        f = client.files.get(name=file_obj.name)
+        state = getattr(f, "state", None)
+        state_name = getattr(state, "name", str(state)).upper()
 
-        # Estado pode vir como string ou enum
-        state_str = getattr(state, "name", None) or str(state)
-
-        if "ACTIVE" in state_str:
-            return info
-
-        if "FAILED" in state_str:
-            msg = getattr(getattr(info, "error", None), "message", None) or "Falha no processamento do arquivo."
-            raise RuntimeError(msg)
-
-        if time.time() - start > timeout_seconds:
-            raise TimeoutError("Tempo limite ao processar arquivo (especialmente comum em vídeos grandes).")
-
+        if "ACTIVE" in state_name:
+            return f
+        if "FAILED" in state_name:
+            raise RuntimeError("Falha ao processar o arquivo no Gemini.")
+        if time.time() - start > timeout_sec:
+            raise TimeoutError("O arquivo demorou demais para processar.")
         time.sleep(2)
 
 
-def upload_files_to_gemini(uploaded_files):
+def upload_attachments(files):
     """
-    Faz upload dos anexos para o Gemini Files API e devolve:
-    - lista de objetos File (pra usar no prompt)
-    - lista de descrições (pra exibir no chat)
+    Faz upload para Gemini Files API e retorna:
+    - refs para enviar no chat
+    - labels para mostrar ao usuário
     """
-    gemini_files = []
+    refs = []
     labels = []
+    temp_paths = []
 
-    for uf in uploaded_files:
-        bio, mime, display_name, note = normalize_for_upload(uf)
+    try:
+        for uf in files:
+            temp_path, label = normalize_uploaded_file_to_temp(uf)
+            temp_paths.append(temp_path)
 
-        # Upload (Files API)
-        uploaded = client.files.upload(
-            file=bio,
-            config={
-                "mime_type": mime,
-                "display_name": display_name
-            }
-        )
+            uploaded = client.files.upload(file=temp_path)
+            uploaded = wait_file_active(uploaded)
 
-        # Aguarda processamento ficar ativo (recomendado para mídia)
-        uploaded = wait_until_active(uploaded)
+            refs.append(uploaded)
+            labels.append(label)
 
-        gemini_files.append(uploaded)
+        return refs, labels
 
-        label = f"{uf.name}"
-        if note:
-            label += f" ({note})"
-        labels.append(label)
-
-    return gemini_files, labels
+    finally:
+        for p in temp_paths:
+            try:
+                os.remove(p)
+            except Exception:
+                pass
 
 
-# ============================================================
-# 8) STREAM DE RESPOSTA
-# ============================================================
-def stream_chat_response(chat, user_text: str, attached_gemini_files=None):
-    attached_gemini_files = attached_gemini_files or []
+def stream_response(chat, user_text: str, file_refs=None):
+    file_refs = file_refs or []
     st.session_state.last_response = ""
 
-    # Se houver arquivos, envia junto com o texto
-    payload = [*attached_gemini_files, user_text] if attached_gemini_files else user_text
+    payload = [*file_refs, user_text] if file_refs else user_text
+    chunks = []
 
-    chunks_acc = []
     for chunk in chat.send_message_stream(payload):
         txt = getattr(chunk, "text", None)
         if txt:
-            chunks_acc.append(txt)
+            chunks.append(txt)
             yield txt
 
-    st.session_state.last_response = "".join(chunks_acc).strip()
-
-
-# ============================================================
-# 9) BARRA DE AÇÕES
-# ============================================================
-c1, c2 = st.columns([1, 1])
-with c2:
-    if st.button("🗑️ Limpar conversa", use_container_width=True):
-        st.session_state.chat = iniciar_chat(model_name)
-        st.session_state.messages = []
-        st.session_state.last_response = ""
-        st.rerun()
+    st.session_state.last_response = "".join(chunks).strip()
 
 # ============================================================
-# 10) ÁREA DE ANEXOS
+# TOOLBAR LIMPA (importar + config)
 # ============================================================
-st.markdown("### 📎 Anexar arquivos para a próxima mensagem")
-uploaded_files = st.file_uploader(
-    "Você pode enviar vários arquivos de uma vez (PDF, imagens, áudio, vídeo, DOCX, XLSX, etc.)",
-    accept_multiple_files=True,
-    type=[
-        "pdf",
-        "png", "jpg", "jpeg", "webp", "bmp",
-        "mp3", "wav", "m4a", "aac", "ogg", "flac",
-        "mp4", "mov", "avi", "webm", "mkv", "mpeg",
-        "txt", "md", "csv", "json", "html", "xml", "rtf",
-        "docx",
-        "xlsx", "xlsm"
-    ],
-    help="Os anexos selecionados serão enviados com a próxima mensagem."
-)
+st.markdown('<div class="toolbar-wrap">', unsafe_allow_html=True)
+col_a, col_b, col_c = st.columns([1, 1, 4])
 
-if uploaded_files:
-    st.caption("Anexos prontos para envio:")
-    st.write([f.name for f in uploaded_files])
+with col_a:
+    with st.popover("📎 Importar", use_container_width=True):
+        st.markdown("**Anexar arquivos**")
+        st.caption("Documentos, imagens, áudio, vídeo e outros.")
+        selected_files = st.file_uploader(
+            "Anexar",
+            accept_multiple_files=True,
+            type=[
+                "pdf",
+                "png", "jpg", "jpeg", "webp", "bmp",
+                "mp3", "wav", "m4a", "aac", "ogg", "flac",
+                "mp4", "mov", "avi", "webm", "mkv", "mpeg",
+                "txt", "md", "csv", "json", "html", "xml", "rtf",
+                "docx", "xlsx", "xlsm"
+            ],
+            label_visibility="collapsed",
+            key=f"uploader_{st.session_state.uploader_key}"
+        )
+        st.caption("Os anexos serão enviados junto com a próxima mensagem.")
+
+with col_b:
+    with st.popover("⚙️", use_container_width=True):
+        new_model = st.selectbox(
+            "Modelo",
+            ["gemini-2.5-flash-lite", "gemini-2.5-flash"],
+            index=0 if st.session_state.model_name == "gemini-2.5-flash-lite" else 1
+        )
+        new_temp = st.slider("Criatividade", 0.0, 1.0, float(st.session_state.temperature), 0.1)
+
+        if st.button("Aplicar e reiniciar conversa", use_container_width=True):
+            st.session_state.model_name = new_model
+            st.session_state.temperature = new_temp
+            st.session_state.chat = create_chat(new_model, new_temp)
+            st.session_state.messages = []
+            st.session_state.last_response = ""
+            st.rerun()
+
+        if st.button("Limpar conversa", use_container_width=True):
+            st.session_state.chat = create_chat(st.session_state.model_name, st.session_state.temperature)
+            st.session_state.messages = []
+            st.session_state.last_response = ""
+            st.rerun()
+
+with col_c:
+    st.markdown('<div class="small-muted">Conversa fluida com análise de anexos</div>', unsafe_allow_html=True)
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# Captura os arquivos selecionados (se nenhum, vira lista vazia)
+selected_files = locals().get("selected_files") or []
+
+# Chips dos anexos (compactos, sem poluição)
+if selected_files:
+    chips = "".join([f'<span class="chip">📄 {f.name}</span>' for f in selected_files])
+    st.markdown(f'<div class="chips-wrap">{chips}</div>', unsafe_allow_html=True)
 
 # ============================================================
-# 11) HISTÓRICO DO CHAT
+# HISTÓRICO DO CHAT
 # ============================================================
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
 # ============================================================
-# 12) INPUT + ENVIO
+# INPUT + RESPOSTA
 # ============================================================
-pergunta = st.chat_input("Digite sua pergunta jurídica ou peça análise dos anexos...")
+pergunta = st.chat_input("Pergunte algo jurídico ou peça para analisar os anexos...")
 
 if pergunta:
-    # Mostra a mensagem do usuário (com nomes dos anexos)
-    user_display = pergunta
-    if uploaded_files:
-        nomes = ", ".join([f.name for f in uploaded_files])
-        user_display += f"\n\n📎 **Anexos enviados:** {nomes}"
+    user_text = pergunta
+    if selected_files:
+        user_text += "\n\n📎 **Anexos enviados:** " + ", ".join([f.name for f in selected_files])
 
-    st.session_state.messages.append({"role": "user", "content": user_display})
+    # Exibe msg usuário
+    st.session_state.messages.append({"role": "user", "content": user_text})
     with st.chat_message("user"):
-        st.markdown(user_display)
+        st.markdown(user_text)
 
     # Resposta
     with st.chat_message("assistant"):
         try:
-            attached_refs = []
-            if uploaded_files:
-                with st.spinner("Enviando e processando anexos..."):
-                    attached_refs, labels = upload_files_to_gemini(uploaded_files)
+            refs = []
+            if selected_files:
+                with st.spinner("Processando anexos..."):
+                    refs, labels = upload_attachments(selected_files)
+                st.caption("✅ " + " • ".join(labels))
 
-                # Mostra confirmação dos anexos processados
-                st.caption("✅ Anexos processados: " + " • ".join(labels))
+            st.write_stream(stream_response(st.session_state.chat, pergunta, refs))
 
-            # Streaming da resposta
-            stream_output = st.write_stream(
-                stream_chat_response(
-                    st.session_state.chat,
-                    pergunta,
-                    attached_gemini_files=attached_refs
-                )
-            )
+            final_text = st.session_state.last_response or "Não consegui responder agora. Tenta reformular."
+            st.session_state.messages.append({"role": "assistant", "content": final_text})
 
-            # st.write_stream costuma retornar string final quando recebe chunks de texto
-            texto_final = st.session_state.last_response or (stream_output if isinstance(stream_output, str) else "")
-            if not texto_final:
-                texto_final = "Não consegui gerar resposta agora. Tenta reformular a pergunta."
-
-            st.session_state.messages.append({"role": "assistant", "content": texto_final})
+            # limpa anexos após envio
+            st.session_state.uploader_key += 1
 
         except Exception as e:
-            erro = str(e).lower()
-
-            if "api key" in erro or "unauthorized" in erro or "permission" in erro:
-                st.error("❌ Erro de autenticação. Verifica a `GEMINI_API_KEY` no Streamlit Secrets.")
-            elif "not found" in erro:
-                st.error("❌ Recurso não encontrado (modelo ou arquivo). Verifica a configuração.")
-            elif "timeout" in erro:
-                st.error("⏳ O processamento do arquivo demorou demais (muito comum em vídeo grande). Tenta reduzir o arquivo.")
-            else:
-                st.error(f"❌ Erro: {e}")
+            st.error(f"Erro: {e}")
