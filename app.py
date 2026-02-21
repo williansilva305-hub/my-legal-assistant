@@ -23,7 +23,7 @@ Se eu pedir para aprender algo novo, use o método socrático: faça perguntas p
 
 # Configurar a IA com a personalidade acima
 modelo = genai.GenerativeModel(
-    model_name="gemini-2.0-flash",
+    model_name="gemini-1.5-flash",
     system_instruction=instrucao_mestra
 )
 
