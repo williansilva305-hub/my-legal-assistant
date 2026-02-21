@@ -1,54 +1,101 @@
 import streamlit as st
 import google.generativeai as genai
 
-# 1. Configuração do Layout do Site
-st.set_page_config(page_title="My Legal Assistant", page_icon="⚖️", layout="centered")
-
-# Título da página
-st.title("⚖️ My Legal Assistant")
-st.markdown("O seu assistente jurídico, mentor e professor particular.")
-
-# 2. Conectando a Chave Secreta (O Motor)
-# Quando colocarmos o site online, ele vai puxar a chave que guardou no "Meus acessos"
-API_KEY = st.secrets.get("GEMINI_API_KEY", "SUA_CHAVE_AQUI")
-genai.configure(api_key=API_KEY)
-
-# 3. Criando a Personalidade (O Prompt do Professor)
-instrucao_mestra = """
-Você é o meu Assistente Pessoal, Jurídico e Professor Particular. 
-Seu tom deve ser amigável, encorajador e altamente didático, conversando de forma fluida e natural. 
-Quando eu fizer uma pergunta jurídica ou pedir para analisar um caso, explique os conceitos de forma clara, como se estivesse a dar uma aula, usando exemplos práticos. 
-Se eu pedir para aprender algo novo, use o método socrático: faça perguntas para testar o meu raciocínio em vez de apenas dar a resposta pronta.
-"""
-
-# Configurar a IA com a personalidade acima
-modelo = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    system_instruction=instrucao_mestra
+# --- 1. CONFIGURAÇÃO DA PÁGINA ---
+st.set_page_config(
+    page_title="My Legal Assistant", 
+    page_icon="⚖️", 
+    layout="centered"
 )
 
-# 4. Criando a Memória da Conversa
-if "chat" not in st.session_state:
-    st.session_state.chat = modelo.start_chat(history=[])
+# Estilo CSS para deixar o visual mais moderno
+st.markdown("""
+    <style>
+    .stChatMessage { border-radius: 15px; margin-bottom: 10px; }
+    .main { background-color: #f8f9fa; }
+    </style>
+    """, unsafe_allow_config=True)
 
-# Mostrar as mensagens antigas no ecrã
-for mensagem in st.session_state.chat.history:
-    papel = "user" if mensagem.role == "user" else "assistant"
-    with st.chat_message(papel):
-        st.markdown(mensagem.parts[0].text)
-
-# 5. A Caixa de Conversa (Onde você digita)
-pergunta = st.chat_input("Digite a sua pergunta jurídica ou peça para analisar um caso...")
-
-if pergunta:
-    # Mostra a sua pergunta no ecrã
-    with st.chat_message("user"):
-        st.markdown(pergunta)
+# --- 2. BARRA LATERAL (SIDEBAR) ---
+with st.sidebar:
+    st.title("⚖️ Menu do Assistente")
+    st.info("Este é o seu mentor jurídico particular, rodando direto do seu Vostro!")
     
-    # Mostra a resposta do Assistente
-    with st.chat_message("assistant"):
-        resposta = st.session_state.chat.send_message(pergunta)
-        st.markdown(resposta.text)
+    # Botão para limpar o histórico e começar do zero
+    if st.button("Limpar Histórico de Conversa"):
+        st.session_state.messages = []
+        if "chat" in st.session_state:
+            del st.session_state.chat
+        st.rerun()
+
+# --- 3. CONEXÃO SEGURA COM A IA ---
+st.title("⚖️ My Legal Assistant")
+st.caption("Mentor Jurídico e Professor Particular")
+
+def carregar_ia():
+    try:
+        # Busca a chave nos Secrets do Streamlit
+        api_key = st.secrets.get("GEMINI_API_KEY")
         
-        # Nota: As "ondas" animadas e a voz (edge-tts) serão adicionadas no passo seguinte, 
-        # assim que o site estiver no ar para não sobrecarregar o seu computador local!
+        if not api_key or api_key == "SUA_CHAVE_AQUI":
+            st.error("⚠️ Chave API não configurada! Vá em Settings > Secrets no Streamlit.")
+            st.stop()
+            
+        genai.configure(api_key=api_key)
+        return True
+    except Exception as e:
+        st.error(f"❌ Erro de configuração: {e}")
+        return False
+
+if carregar_ia():
+    # Personalidade do Professor
+    instrucao_mestra = """
+    Você é o meu Assistente Pessoal, Jurídico e Professor Particular. 
+    Seu tom deve ser amigável, encorajador e altamente didático.
+    Explique conceitos de forma clara, use exemplos práticos e, se eu quiser aprender algo novo, 
+    use o método socrático: faça perguntas para me fazer pensar.
+    """
+
+    # Configura o modelo (1.5-flash é o mais estável para contas gratuitas)
+    if "model" not in st.session_state:
+        st.session_state.model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            system_instruction=instrucao_mestra
+        )
+
+    # Inicializa a memória da conversa
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    if "chat" not in st.session_state:
+        st.session_state.chat = st.session_state.model.start_chat(history=[])
+
+    # Exibe as mensagens na tela
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # --- 4. ÁREA DE INTERAÇÃO ---
+    pergunta = st.chat_input("Digite sua dúvida jurídica ou peça uma explicação...")
+
+    if pergunta:
+        # Mostra a pergunta do usuário
+        st.session_state.messages.append({"role": "user", "content": pergunta})
+        with st.chat_message("user"):
+            st.markdown(pergunta)
+
+        # Gera a resposta com tratamento de erro (Proteção contra o "Erro Vermelho")
+        with st.chat_message("assistant"):
+            try:
+                with st.spinner("O Mestre está elaborando a resposta..."):
+                    resposta = st.session_state.chat.send_message(pergunta)
+                    st.markdown(resposta.text)
+                    st.session_state.messages.append({"role": "assistant", "content": resposta.text})
+            except Exception as e:
+                # Aqui está o segredo: se der erro, ele avisa de forma elegante
+                if "429" in str(e) or "ResourceExhausted" in str(e):
+                    st.warning("☕ O Google atingiu o limite de uso gratuito por agora. Aguarde 60 segundos e tente novamente.")
+                elif "NotFound" in str(e):
+                    st.error("🔍 Chave não encontrada. Verifique se clicou em 'Save' nos Secrets do Streamlit.")
+                else:
+                    st.error(f"🤔 Ocorreu um imprevisto: {e}")
