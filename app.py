@@ -11,15 +11,15 @@ from docx import Document
 from openpyxl import load_workbook
 
 # ============================================================
-# CONFIG INICIAL
+# CONFIG DA PÁGINA
 # ============================================================
 st.set_page_config(
-    page_title="My Legal Assistant",
-    page_icon="⚖️",
+    page_title="Falcão Jurídico",
+    page_icon="🦅",
     layout="centered"
 )
 
-# CSS para deixar com visual mais clean (estilo chat moderno)
+# CSS clean (estilo chat moderno)
 st.markdown("""
 <style>
 #MainMenu {visibility: hidden;}
@@ -28,8 +28,8 @@ header {visibility: hidden;}
 
 .block-container {
     max-width: 900px;
-    padding-top: 1.2rem;
-    padding-bottom: 6rem;
+    padding-top: 1.0rem;
+    padding-bottom: 5rem;
 }
 
 .app-title {
@@ -57,7 +57,7 @@ header {visibility: hidden;}
     flex-wrap: wrap;
     gap: 6px;
     margin-top: 4px;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
 }
 .chip {
     border: 1px solid rgba(128,128,128,0.35);
@@ -76,17 +76,22 @@ header {visibility: hidden;}
 """, unsafe_allow_html=True)
 
 # ============================================================
-# HEADER LIMPO
+# HEADER
 # ============================================================
-st.markdown('<div class="app-title">⚖️ My Legal Assistant</div>', unsafe_allow_html=True)
-st.markdown('<div class="app-subtitle">Assistente jurídico e professor particular, com anexos e resposta fluida.</div>', unsafe_allow_html=True)
+st.markdown('<div class="app-title">🦅 Falcão Jurídico</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="app-subtitle">Assistente jurídico e professor particular com análise de anexos e conversa fluida.</div>',
+    unsafe_allow_html=True
+)
 
 # ============================================================
-# API KEY
+# SECRETS / CHAVE
 # ============================================================
 API_KEY = st.secrets.get("GEMINI_API_KEY")
+LIVE_URL = st.secrets.get("LIVE_URL", "http://localhost:8000/live")
+
 if not API_KEY:
-    st.error("Falta configurar `GEMINI_API_KEY` no Streamlit Secrets.")
+    st.error("❌ Falta configurar `GEMINI_API_KEY` no Streamlit Secrets.")
     st.stop()
 
 @st.cache_resource
@@ -96,7 +101,7 @@ def get_client(api_key: str):
 client = get_client(API_KEY)
 
 # ============================================================
-# CONFIG / PROMPT
+# CONFIGS DO ASSISTENTE
 # ============================================================
 DEFAULT_MODEL = "gemini-2.5-flash-lite"  # free
 DEFAULT_TEMP = 0.6
@@ -111,6 +116,7 @@ ESTILO:
 - Só use listas quando realmente ajudarem.
 - Em temas jurídicos, explique de forma didática, clara e prática.
 - Se eu enviar documentos, imagens, áudio ou vídeo, analise o conteúdo com organização.
+- Quando for útil, organize em: fatos, questões jurídicas, riscos e estratégia.
 
 CUIDADOS:
 - Não invente leis, artigos, súmulas ou precedentes.
@@ -151,7 +157,7 @@ if "uploader_key" not in st.session_state:
     st.session_state.uploader_key = 0
 
 # ============================================================
-# UTILITÁRIOS DE DOCS
+# UTILITÁRIOS DE CONVERSÃO (DOCX / XLSX -> TEXTO)
 # ============================================================
 def docx_to_text(file_bytes: bytes) -> str:
     doc = Document(io.BytesIO(file_bytes))
@@ -169,7 +175,6 @@ def docx_to_text(file_bytes: bytes) -> str:
             parts.append(" | ".join(vals))
 
     return "\n".join(parts).strip()
-
 
 def xlsx_to_text(file_bytes: bytes, max_rows_per_sheet: int = 200, max_cols: int = 20) -> str:
     wb = load_workbook(io.BytesIO(file_bytes), data_only=True)
@@ -189,16 +194,14 @@ def xlsx_to_text(file_bytes: bytes, max_rows_per_sheet: int = 200, max_cols: int
 
     return "\n".join(lines).strip()
 
-
 def normalize_uploaded_file_to_temp(uploaded_file):
     """
-    Converte alguns formatos localmente (DOCX/XLSX -> TXT),
-    e retorna caminho temporário + label.
+    Converte alguns formatos localmente (DOCX/XLSX -> TXT)
+    e devolve um arquivo temporário pronto para upload no Gemini Files API.
     """
     raw = uploaded_file.getvalue()
     ext = Path(uploaded_file.name).suffix.lower()
 
-    # DOCX -> TXT
     if ext == ".docx":
         txt = docx_to_text(raw) or "[DOCX sem texto extraível]"
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
@@ -207,7 +210,6 @@ def normalize_uploaded_file_to_temp(uploaded_file):
         tmp.close()
         return tmp.name, f"{uploaded_file.name} (documento)"
 
-    # XLSX/XLSM -> TXT
     if ext in [".xlsx", ".xlsm"]:
         txt = xlsx_to_text(raw) or "[Planilha sem conteúdo legível]"
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
@@ -216,17 +218,15 @@ def normalize_uploaded_file_to_temp(uploaded_file):
         tmp.close()
         return tmp.name, f"{uploaded_file.name} (planilha)"
 
-    # DOC antigo -> pedir conversão
     if ext == ".doc":
         raise ValueError(f"{uploaded_file.name}: formato .doc antigo. Converta para .docx ou PDF.")
 
-    # Demais arquivos (pdf/imagem/áudio/vídeo/texto)
+    # PDF, imagem, áudio, vídeo, txt etc.
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext if ext else ".bin")
     tmp.write(raw)
     tmp.flush()
     tmp.close()
     return tmp.name, uploaded_file.name
-
 
 def wait_file_active(file_obj, timeout_sec: int = 240):
     start = time.time()
@@ -243,13 +243,7 @@ def wait_file_active(file_obj, timeout_sec: int = 240):
             raise TimeoutError("O arquivo demorou demais para processar.")
         time.sleep(2)
 
-
 def upload_attachments(files):
-    """
-    Faz upload para Gemini Files API e retorna:
-    - refs para enviar no chat
-    - labels para mostrar ao usuário
-    """
     refs = []
     labels = []
     temp_paths = []
@@ -274,7 +268,9 @@ def upload_attachments(files):
             except Exception:
                 pass
 
-
+# ============================================================
+# STREAM DE RESPOSTA
+# ============================================================
 def stream_response(chat, user_text: str, file_refs=None):
     file_refs = file_refs or []
     st.session_state.last_response = ""
@@ -291,15 +287,15 @@ def stream_response(chat, user_text: str, file_refs=None):
     st.session_state.last_response = "".join(chunks).strip()
 
 # ============================================================
-# TOOLBAR LIMPA (importar + config)
+# TOOLBAR (IMPORTAR / CONFIG / LIVE)
 # ============================================================
 st.markdown('<div class="toolbar-wrap">', unsafe_allow_html=True)
-col_a, col_b, col_c = st.columns([1, 1, 4])
+col_a, col_b, col_c, col_d = st.columns([1.2, 0.8, 1.3, 2.7])
 
 with col_a:
     with st.popover("📎 Importar", use_container_width=True):
         st.markdown("**Anexar arquivos**")
-        st.caption("Documentos, imagens, áudio, vídeo e outros.")
+        st.caption("Documentos, imagens, áudio, vídeo e outros")
         selected_files = st.file_uploader(
             "Anexar",
             accept_multiple_files=True,
@@ -314,7 +310,7 @@ with col_a:
             label_visibility="collapsed",
             key=f"uploader_{st.session_state.uploader_key}"
         )
-        st.caption("Os anexos serão enviados junto com a próxima mensagem.")
+        st.caption("Os anexos serão enviados com a próxima mensagem.")
 
 with col_b:
     with st.popover("⚙️", use_container_width=True):
@@ -325,7 +321,7 @@ with col_b:
         )
         new_temp = st.slider("Criatividade", 0.0, 1.0, float(st.session_state.temperature), 0.1)
 
-        if st.button("Aplicar e reiniciar conversa", use_container_width=True):
+        if st.button("Aplicar e reiniciar", use_container_width=True):
             st.session_state.model_name = new_model
             st.session_state.temperature = new_temp
             st.session_state.chat = create_chat(new_model, new_temp)
@@ -340,21 +336,26 @@ with col_b:
             st.rerun()
 
 with col_c:
-    st.markdown('<div class="small-muted">Conversa fluida com análise de anexos</div>', unsafe_allow_html=True)
+    st.link_button("🎙️ Falcão Live", LIVE_URL, use_container_width=True)
+
+with col_d:
+    st.markdown('<div class="small-muted">Visão, precisão e estratégia para seus casos.</div>', unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Captura os arquivos selecionados (se nenhum, vira lista vazia)
 selected_files = locals().get("selected_files") or []
 
-# Chips dos anexos (compactos, sem poluição)
+# Chips dos anexos
 if selected_files:
     chips = "".join([f'<span class="chip">📄 {f.name}</span>' for f in selected_files])
     st.markdown(f'<div class="chips-wrap">{chips}</div>', unsafe_allow_html=True)
 
 # ============================================================
-# HISTÓRICO DO CHAT
+# HISTÓRICO
 # ============================================================
+if not st.session_state.messages:
+    st.info("Posso analisar documentos, imagens, áudios e vídeos. Me diga o que você precisa.")
+
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
@@ -365,21 +366,20 @@ for msg in st.session_state.messages:
 pergunta = st.chat_input("Pergunte algo jurídico ou peça para analisar os anexos...")
 
 if pergunta:
-    user_text = pergunta
+    user_display = pergunta
     if selected_files:
-        user_text += "\n\n📎 **Anexos enviados:** " + ", ".join([f.name for f in selected_files])
+        user_display += "\n\n📎 **Anexos enviados:** " + ", ".join([f.name for f in selected_files])
 
-    # Exibe msg usuário
-    st.session_state.messages.append({"role": "user", "content": user_text})
+    st.session_state.messages.append({"role": "user", "content": user_display})
+
     with st.chat_message("user"):
-        st.markdown(user_text)
+        st.markdown(user_display)
 
-    # Resposta
     with st.chat_message("assistant"):
         try:
             refs = []
             if selected_files:
-                with st.spinner("Processando anexos..."):
+                with st.spinner("🦅 Lendo anexos..."):
                     refs, labels = upload_attachments(selected_files)
                 st.caption("✅ " + " • ".join(labels))
 
@@ -390,6 +390,7 @@ if pergunta:
 
             # limpa anexos após envio
             st.session_state.uploader_key += 1
+            st.rerun()
 
         except Exception as e:
-            st.error(f"Erro: {e}")
+            st.error(f"❌ Erro: {e}")
