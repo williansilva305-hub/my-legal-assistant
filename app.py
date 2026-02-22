@@ -1,5 +1,6 @@
 import io
 import os
+import re
 import time
 import html
 import base64
@@ -14,277 +15,255 @@ from google.genai import types
 from docx import Document
 from openpyxl import load_workbook
 
+
 # ============================================================
-# CONFIG
+# CONFIG GERAL
 # ============================================================
-st.set_page_config(page_title="Falcon", page_icon="🦅", layout="wide")
+st.set_page_config(
+    page_title="Falcon",
+    page_icon="🦅",
+    layout="wide",
+)
+
+# ============================================================
+# CONSTANTES VISUAIS / BRANDING
+# ============================================================
+APP_NAME = "Falcon"
+BG_COLOR = "#F7F7F8"
+SIDEBAR_BG = "#0F0F0F"
+USER_BUBBLE = "#002D62"
+ASSISTANT_BUBBLE = "#FFFFFF"
+ASSISTANT_BORDER = "#E5E5E5"
+GOLD = "#C9A227"  # dourado do Falcon Live
+
+# Modelo EXCLUSIVO pedido pelo usuário
+MODEL_NAME = "gemini-2.0-flash"
+
+# Link do Falcon Live (pode sobrescrever via Secrets)
+# Se quiser abrir arquivo local estático no Streamlit Cloud, habilite:
+# .streamlit/config.toml  -> [server] enableStaticServing = true
+LIVE_URL = st.secrets.get("LIVE_URL", "/app/static/falcao_live.html")
 
 
 # ============================================================
-# LOGO (corta transparência para não ficar minúsculo)
+# LOGO (static/falcon_logo.png) com corte automático de transparência
 # ============================================================
 def get_logo_data_uri() -> Optional[str]:
-    candidates = [
-        Path("assets/falcon_logo.png"),
-        Path("static/falcon_logo.png"),
-        Path("falcon_logo.png"),
-        Path("assets/logo.png"),
-    ]
+    logo_path = Path("static/falcon_logo.png")
+    if not logo_path.exists():
+        return None
 
-    for p in candidates:
-        if not (p.exists() and p.is_file()):
-            continue
+    try:
+        from PIL import Image  # pillow costuma estar disponível
+        img = Image.open(logo_path).convert("RGBA")
 
-        try:
-            # tenta recortar transparência (resolve logo "pequeno")
-            from PIL import Image  # pillow normalmente vem no Streamlit
-            img = Image.open(p).convert("RGBA")
+        # recorta transparência para o símbolo não ficar minúsculo
+        alpha = img.getchannel("A")
+        bbox = alpha.getbbox()
+        if bbox:
+            img = img.crop(bbox)
 
-            # usa alpha para achar bbox real do desenho
-            alpha = img.getchannel("A")
-            bbox = alpha.getbbox()
+        # adiciona uma margem leve para não "grudar"
+        margin = 12
+        w, h = img.size
+        canvas = Image.new("RGBA", (w + margin * 2, h + margin * 2), (0, 0, 0, 0))
+        canvas.paste(img, (margin, margin))
+        img = canvas
 
-            if bbox:
-                img = img.crop(bbox)
+        bio = io.BytesIO()
+        img.save(bio, format="PNG")
+        b64 = base64.b64encode(bio.getvalue()).decode("utf-8")
+        return f"data:image/png;base64,{b64}"
 
-            # pequena margem opcional
-            margin = 24
-            w, h = img.size
-            canvas = Image.new("RGBA", (w + margin * 2, h + margin * 2), (0, 0, 0, 0))
-            canvas.paste(img, (margin, margin))
-            img = canvas
-
-            bio = io.BytesIO()
-            img.save(bio, format="PNG")
-            b64 = base64.b64encode(bio.getvalue()).decode("utf-8")
-            return f"data:image/png;base64,{b64}"
-        except Exception:
-            # fallback simples
-            raw = p.read_bytes()
-            mime = "image/png"
-            if p.suffix.lower() in [".jpg", ".jpeg"]:
-                mime = "image/jpeg"
-            b64 = base64.b64encode(raw).decode("utf-8")
-            return f"data:{mime};base64,{b64}"
-
-    return None
+    except Exception:
+        raw = logo_path.read_bytes()
+        b64 = base64.b64encode(raw).decode("utf-8")
+        return f"data:image/png;base64,{b64}"
 
 
 LOGO_URI = get_logo_data_uri()
 
 
 # ============================================================
-# CSS (mais fiel ao mock)
+# CSS CUSTOM (layout + branding)
 # ============================================================
-sidebar_logo = (
-    f'<img src="{LOGO_URI}" class="logo-sidebar-img" />'
-    if LOGO_URI
-    else '<div class="logo-sidebar-fallback">🦅</div>'
-)
-top_logo = (
-    f'<img src="{LOGO_URI}" class="logo-top-img" />'
-    if LOGO_URI
-    else '<div class="logo-top-fallback">⚖️</div>'
+sidebar_logo_html = (
+    f'<img src="{LOGO_URI}" class="falcon-logo" />' if LOGO_URI else '<div class="falcon-logo-fallback">🦅</div>'
 )
 
 st.markdown(
     f"""
 <style>
+/* ===== Reset visual do Streamlit ===== */
 #MainMenu, footer, header {{
     visibility: hidden;
 }}
 [data-testid="collapsedControl"] {{
-    display: none;
+    display: none !important;
 }}
 
 html, body, [data-testid="stAppViewContainer"] {{
-    background: #edf1f6 !important;
+    background: {BG_COLOR} !important;
 }}
 
-/* Margens da página */
 .block-container {{
-    padding-top: 0.6rem !important;
-    padding-bottom: 0.6rem !important;
+    padding-top: 0.7rem !important;
+    padding-bottom: 170px !important; /* espaço para input flutuante */
     max-width: 1400px !important;
 }}
 
-/* ================= SIDEBAR ================= */
+/* ===== Sidebar ===== */
 [data-testid="stSidebar"] {{
-    background:
-      radial-gradient(circle at 18% 8%, rgba(255,189,79,0.12) 0%, rgba(255,189,79,0.00) 34%),
-      linear-gradient(180deg, #111827 0%, #0b1118 100%) !important;
-    border-right: 1px solid rgba(255,255,255,0.06);
+    background: {SIDEBAR_BG} !important;
+    border-right: 1px solid rgba(255,255,255,0.05);
 }}
 [data-testid="stSidebar"] * {{
-    color: #f3f4f6 !important;
+    color: #F5F5F5 !important;
 }}
 
 .sidebar-brand {{
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin: 4px 2px 12px 2px;
-    padding: 4px;
+    gap: 10px;
+    margin: 8px 0 16px 0;
+    padding: 4px 2px;
 }}
-.logo-sidebar-img {{
-    width: 54px;
-    height: 54px;
+.falcon-logo {{
+    width: 70px;
+    height: 70px;
     object-fit: contain;
     display: block;
-    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.28));
+    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.35));
 }}
-.logo-sidebar-fallback {{
-    width: 54px;
-    height: 54px;
-    border-radius: 12px;
-    background: rgba(255,255,255,0.06);
+.falcon-logo-fallback {{
+    width: 70px;
+    height: 70px;
+    border-radius: 14px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 28px;
+    background: rgba(255,255,255,0.05);
+    font-size: 32px;
+}}
+.sidebar-brand-text {{
+    display: flex;
+    flex-direction: column;
+    line-height: 1.05;
 }}
 .sidebar-brand-text .title {{
     font-weight: 700;
-    font-size: 1.05rem;
-    color: #fff;
-    line-height: 1.1;
+    font-size: 1rem;
+    color: #FFFFFF;
 }}
 .sidebar-brand-text .sub {{
     font-size: 0.78rem;
-    color: #a7b2c2;
-    margin-top: 2px;
+    color: #A1A1AA;
+    margin-top: 3px;
 }}
 
-[data-testid="stSidebar"] .stButton > button,
+/* Botão ghost + Nova Conversa */
+[data-testid="stSidebar"] .stButton > button {{
+    width: 100%;
+    justify-content: flex-start;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.18) !important;
+    background: transparent !important;
+    color: #FFFFFF !important;
+    padding: 0.65rem 0.85rem;
+    box-shadow: none !important;
+}}
+[data-testid="stSidebar"] .stButton > button:hover {{
+    background: rgba(255,255,255,0.05) !important;
+    border-color: rgba(255,255,255,0.30) !important;
+}}
+
+/* Popover da sidebar (importar) */
 [data-testid="stSidebar"] .stPopover > button {{
     width: 100%;
     justify-content: flex-start;
     border-radius: 12px;
-    border: 1px solid rgba(255,255,255,0.10);
-    background: rgba(255,255,255,0.03);
-    color: #f9fafb !important;
-    padding: 0.68rem 0.9rem;
+    border: 1px solid rgba(255,255,255,0.10) !important;
+    background: rgba(255,255,255,0.03) !important;
+    color: #FFFFFF !important;
+    padding: 0.65rem 0.85rem;
 }}
-[data-testid="stSidebar"] .stButton > button:hover,
 [data-testid="stSidebar"] .stPopover > button:hover {{
-    background: rgba(255,255,255,0.08);
-    border-color: rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.06) !important;
 }}
 
-/* ================= TOPO AZUL ================= */
-.top-wrap {{
-    border-radius: 14px;
-    overflow: hidden;
-    box-shadow: 0 10px 20px rgba(13,67,180,0.12);
-    margin-bottom: 10px;
-}}
-.top-main {{
-    background: linear-gradient(90deg, #0d2f7d 0%, #0f46ba 100%);
-    min-height: 52px;
-    padding: 10px 14px;
+/* ===== Header simples ===== */
+.falcon-header {{
     display: flex;
     align-items: center;
     justify-content: space-between;
+    margin-bottom: 8px;
 }}
-.top-left {{
+.falcon-header-left {{
     display: flex;
-    align-items: center;
-    gap: 10px;
+    flex-direction: column;
 }}
-.logo-top-img {{
-    width: 34px;
-    height: 34px;
-    object-fit: contain;
-    display: block;
-    filter: drop-shadow(0 1px 4px rgba(0,0,0,0.2));
-}}
-.logo-top-fallback {{
-    width: 34px;
-    height: 34px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-    color: white;
-}}
-.top-title {{
-    color: #ffffff;
+.falcon-header-title {{
+    font-size: 1.05rem;
     font-weight: 700;
-    font-size: 1.02rem;
+    color: #111827;
 }}
-.top-avatar {{
-    width: 34px;
-    height: 34px;
-    border-radius: 999px;
-    background: rgba(255,255,255,0.20);
-    border: 1px solid rgba(255,255,255,0.30);
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 15px;
-}}
-.top-sub {{
-    background: #f4f6fa;
-    border: 1px solid #dbe3ef;
-    border-top: none;
-    padding: 8px 14px;
-    color: #4b5563;
-    font-size: 0.88rem;
+.falcon-header-sub {{
+    font-size: 0.86rem;
+    color: #6B7280;
+    margin-top: 2px;
 }}
 
-/* botão live */
-.top-actions {{
+/* ===== Falcon Live (estilo Gemini Live) ===== */
+.falcon-live-wrap {{
     display: flex;
-    justify-content: flex-end;
-    margin-bottom: 10px;
+    justify-content: center;
+    margin: 8px 0 12px 0;
 }}
-.live-pill {{
+.falcon-live-btn {{
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    padding: 10px 16px;
     border-radius: 999px;
-    border: 1px solid #d6deea;
-    background: #ffffff;
-    color: #0f172a;
-    text-decoration: none;
-    padding: 8px 12px;
-    font-size: 0.88rem;
+    background: #111111;
+    color: #F8FAFC !important;
+    text-decoration: none !important;
+    border: 1px solid {GOLD};
+    box-shadow: 0 0 0 1px rgba(201,162,39,0.12), 0 8px 24px rgba(0,0,0,0.15);
+    font-weight: 600;
+    font-size: 0.92rem;
 }}
-.live-pill:hover {{
-    background: #f8fafc;
-    border-color: #c6d2e2;
+.falcon-live-btn:hover {{
+    background: #161616;
+    color: #FFFFFF !important;
+    border-color: #E0B93C;
+}}
+.falcon-live-waves {{
+    display: inline-block;
+    color: {GOLD};
+    font-weight: 700;
+    letter-spacing: 1px;
 }}
 
-/* ================= CHAT CARD ================= */
-.chat-outer {{
-    background: #ffffff;
-    border: 1px solid #dbe3ef;
-    border-radius: 14px;
-    box-shadow: 0 8px 20px rgba(15,23,42,0.05);
+/* ===== Card principal do chat ===== */
+.chat-panel {{
+    background: #FFFFFF;
+    border: 1px solid {ASSISTANT_BORDER};
+    border-radius: 16px;
+    box-shadow: 0 6px 24px rgba(15,23,42,0.05);
     overflow: hidden;
 }}
-
 .chat-scroll {{
-    height: calc(100vh - 355px);
-    min-height: 300px;
-    max-height: calc(100vh - 355px);
+    height: calc(100vh - 285px);
+    min-height: 340px;
+    max-height: calc(100vh - 285px);
     overflow-y: auto;
-    padding: 14px 14px 10px 14px;
-    background: #ffffff;
+    padding: 14px;
+    background: #FFFFFF;
+    scroll-behavior: smooth;
 }}
 
-.chat-divider {{
-    height: 1px;
-    background: #e6ecf3;
-}}
-
-.input-shell {{
-    background: #f8fafd;
-    padding: 10px 12px;
-}}
-
-/* mensagens */
+/* ===== Mensagens ===== */
 .msg-row {{
     display: flex;
     width: 100%;
@@ -299,23 +278,23 @@ html, body, [data-testid="stAppViewContainer"] {{
 
 .bubble {{
     max-width: 78%;
-    border-radius: 14px;
+    border-radius: 18px;
     padding: 10px 12px;
     font-size: 0.96rem;
-    line-height: 1.42;
+    line-height: 1.45;
     white-space: pre-wrap;
     word-wrap: break-word;
 }}
 .bubble.user {{
-    background: linear-gradient(180deg, #0e4dac 0%, #0a3d8d 100%);
-    color: #ffffff;
-    border: 1px solid rgba(255,255,255,0.14);
-    box-shadow: 0 4px 10px rgba(10,61,141,0.18);
+    background: {USER_BUBBLE};
+    color: #FFFFFF;
+    border: 1px solid rgba(255,255,255,0.06);
 }}
 .bubble.assistant {{
-    background: #eef2f7;
+    background: {ASSISTANT_BUBBLE};
     color: #111827;
-    border: 1px solid #e2e8f0;
+    border: 1px solid {ASSISTANT_BORDER};
+    box-shadow: 0 2px 10px rgba(0,0,0,0.04);
 }}
 .bubble .label {{
     font-weight: 700;
@@ -325,81 +304,76 @@ html, body, [data-testid="stAppViewContainer"] {{
 
 .empty-state {{
     height: 100%;
-    min-height: 220px;
+    min-height: 240px;
     display: flex;
     align-items: center;
     justify-content: center;
+    color: #6B7280;
     text-align: center;
-    color: #667085;
-    font-size: 0.97rem;
     line-height: 1.5;
+    font-size: 0.95rem;
 }}
 
-/* chips anexos */
 .chips-wrap {{
     display: flex;
-    gap: 6px;
     flex-wrap: wrap;
-    margin: 0 0 8px 0;
+    gap: 6px;
+    margin: 8px 0 0 0;
 }}
 .chip {{
     border-radius: 999px;
-    border: 1px solid #d8e2ee;
-    background: #ffffff;
+    border: 1px solid #E5E7EB;
+    background: #FFFFFF;
     color: #334155;
     padding: 4px 10px;
     font-size: 0.80rem;
 }}
 
-/* Input row widgets */
-.input-row-label {{
-    display:none;
+/* ===== Input flutuante (st.chat_input) ===== */
+[data-testid="stChatInput"] {{
+    position: fixed !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    bottom: 16px !important;
+    width: min(960px, calc(100vw - 330px)) !important; /* espaço da sidebar */
+    z-index: 999 !important;
+    background: transparent !important;
+    padding: 0 !important;
+}}
+[data-testid="stChatInput"] > div {{
+    background: transparent !important;
+}}
+[data-testid="stChatInput"] textarea {{
+    border-radius: 999px !important;   /* pill */
+    border: 1px solid #E5E7EB !important;
+    background: #FFFFFF !important;
+    box-shadow: 0 8px 30px rgba(15,23,42,0.08) !important;
+    padding-left: 14px !important;
+    padding-right: 52px !important;
+    min-height: 46px !important;
+}}
+[data-testid="stChatInput"] button {{
+    border-radius: 999px !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    margin-right: 6px !important;
 }}
 
-.send-btn button {{
-    width: 100%;
-    min-height: 42px;
-    border-radius: 10px !important;
-    border: 1px solid #d4deea !important;
-    background: linear-gradient(180deg, #0f4fb2 0%, #0c3f95 100%) !important;
-    color: #fff !important;
-}}
-.send-btn button:hover {{
-    filter: brightness(1.04);
-}}
-
-.icon-btn button, .icon-popover > button {{
-    width: 100%;
-    min-height: 42px;
-    border-radius: 10px !important;
-    border: 1px solid #d4deea !important;
-    background: #ffffff !important;
-    color: #111827 !important;
-}}
-
-.input-text input {{
-    border-radius: 12px !important;
-    border: 1px solid #d4deea !important;
-    background: #ffffff !important;
-    min-height: 42px !important;
-    box-shadow: none !important;
-}}
-
-/* Esconde label do text_input */
-.input-text [data-testid="stTextInputRootElement"] > label {{
-    display: none;
-}}
-
-/* Popover do anexo */
-[data-testid="stPopoverContent"] {{
-    border-radius: 12px !important;
-}}
-
-/* mobile */
+/* ===== Ajuste mobile ===== */
 @media (max-width: 900px) {{
+    .block-container {{
+        padding-bottom: 190px !important;
+    }}
     .chat-scroll {{
-        height: calc(100vh - 410px);
-        max-height: calc(100vh - 410px);
+        height: calc(100vh - 340px);
+        max-height: calc(100vh - 340px);
+    }}
+    [data-testid="stChatInput"] {{
+        width: calc(100vw - 24px) !important;
+        left: 12px !important;
+        transform: none !important;
+        bottom: 12px !important;
     }}
     .bubble {{
         max-width: 90%;
@@ -410,98 +384,99 @@ html, body, [data-testid="stAppViewContainer"] {{
     unsafe_allow_html=True,
 )
 
+
 # ============================================================
-# GEMINI
+# CLIENTE GEMINI (novo SDK)
 # ============================================================
 API_KEY = st.secrets.get("GEMINI_API_KEY")
-LIVE_URL = st.secrets.get("LIVE_URL", "http://localhost:8000/live")
-
 if not API_KEY:
-    st.error("❌ Falta configurar `GEMINI_API_KEY` no Streamlit Secrets.")
+    st.error("❌ Configure `GEMINI_API_KEY` em Settings → Secrets do Streamlit.")
     st.stop()
+
 
 @st.cache_resource
 def get_client(api_key: str):
     return genai.Client(api_key=api_key)
 
+
 client = get_client(API_KEY)
 
-# Modelos free (deixa opções mais seguras)
-FREE_MODELS = [
-    "gemini-2.0-flash-lite",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-]
 
-DEFAULT_MODEL = FREE_MODELS[0]
-DEFAULT_TEMP = 0.6
+# ============================================================
+# PERSONA "MESTRE" (system instruction)
+# ============================================================
+SYSTEM_INSTRUCTION = """
+Você é o Mestre Falcon, um assistente jurídico e professor particular.
 
-INSTRUCAO_MESTRA = """
-Você é o Falcão, meu assistente jurídico e professor particular.
-
-ESTILO:
+PERSONALIDADE E ESTILO:
 - Fale em português do Brasil.
-- Responda de forma natural, fluida e humana.
-- Evite tom robótico.
-- Em temas jurídicos, explique com clareza e didática.
-- Se eu enviar documentos, imagens, áudio ou vídeo, analise com organização.
-- Quando útil, organize em: fatos, questões jurídicas, riscos e estratégia.
+- Seja didático, encorajador e natural (fluido, sem soar robótico).
+- Explique como um professor que guia o raciocínio.
+- Quando útil, use exemplos práticos e perguntas curtas para estimular o pensamento.
 
-CUIDADOS:
-- Não invente leis, artigos, súmulas ou precedentes.
-- Se estiver em dúvida, diga com clareza.
+PRECISÃO JURÍDICA:
+- Seja juridicamente preciso.
+- Não invente artigos, súmulas, jurisprudências ou prazos.
+- Quando houver incerteza, diga com transparência.
 - Diferencie explicação educativa de orientação profissional definitiva.
+
+ANÁLISE DE ANEXOS:
+- Se receber documentos, imagens, áudios ou vídeos, organize a resposta.
+- Estruture, quando fizer sentido, em:
+  1) Fatos
+  2) Pontos jurídicos
+  3) Riscos
+  4) Estratégia sugerida
 """
 
-def create_chat(model_name: str, temperature: float):
+
+def create_chat():
     return client.chats.create(
-        model=model_name,
+        model=MODEL_NAME,
         config=types.GenerateContentConfig(
-            system_instruction=INSTRUCAO_MESTRA,
-            temperature=temperature,
+            system_instruction=SYSTEM_INSTRUCTION,
+            temperature=0.6,
             top_p=0.95,
             max_output_tokens=4096,
         ),
     )
 
+
 # ============================================================
-# SESSION
+# SESSION STATE
 # ============================================================
-if "model_name" not in st.session_state:
-    st.session_state.model_name = DEFAULT_MODEL
-if "temperature" not in st.session_state:
-    st.session_state.temperature = DEFAULT_TEMP
 if "chat" not in st.session_state:
-    st.session_state.chat = create_chat(st.session_state.model_name, st.session_state.temperature)
+    st.session_state.chat = create_chat()
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
 if "uploader_key" not in st.session_state:
     st.session_state.uploader_key = 0
+
 if "show_history" not in st.session_state:
     st.session_state.show_history = False
-if "draft_message" not in st.session_state:
-    st.session_state.draft_message = ""
 
 
 # ============================================================
-# UTILIDADES ARQUIVOS
+# UTILITÁRIOS (DOCX/XLSX -> TXT para upload)
 # ============================================================
 def docx_to_text(file_bytes: bytes) -> str:
     doc = Document(io.BytesIO(file_bytes))
-    parts = []
+    out = []
 
     for p in doc.paragraphs:
         txt = (p.text or "").strip()
         if txt:
-            parts.append(txt)
+            out.append(txt)
 
     for table in doc.tables:
-        parts.append("\n[TABELA]")
+        out.append("\n[TABELA]")
         for row in table.rows:
             vals = [(c.text or "").replace("\n", " ").strip() for c in row.cells]
-            parts.append(" | ".join(vals))
+            out.append(" | ".join(vals))
 
-    return "\n".join(parts).strip()
+    return "\n".join(out).strip()
 
 
 def xlsx_to_text(file_bytes: bytes, max_rows_per_sheet: int = 200, max_cols: int = 20) -> str:
@@ -546,6 +521,7 @@ def normalize_uploaded_file_to_temp(uploaded_file):
     if ext == ".doc":
         raise ValueError(f"{uploaded_file.name}: formato .doc antigo. Converta para .docx ou PDF.")
 
+    # PDF, imagens, áudio, vídeo, txt etc. vão direto
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext if ext else ".bin")
     tmp.write(raw)
     tmp.flush()
@@ -563,9 +539,9 @@ def wait_file_active(file_obj, timeout_sec: int = 240):
         if "ACTIVE" in state_name:
             return f
         if "FAILED" in state_name:
-            raise RuntimeError("Falha ao processar o arquivo no Gemini.")
+            raise RuntimeError("Falha ao processar um anexo no Gemini.")
         if time.time() - start > timeout_sec:
-            raise TimeoutError("O arquivo demorou demais para processar.")
+            raise TimeoutError("O processamento de anexos demorou demais.")
         time.sleep(2)
 
 
@@ -586,6 +562,7 @@ def upload_attachments(files):
             labels.append(label)
 
         return refs, labels
+
     finally:
         for p in temp_paths:
             try:
@@ -595,7 +572,7 @@ def upload_attachments(files):
 
 
 # ============================================================
-# RENDER CHAT (HTML + scroll)
+# RENDER HTML DO CHAT (scroll interno)
 # ============================================================
 def build_chat_html(messages, partial_assistant_text=None):
     rows = []
@@ -603,8 +580,8 @@ def build_chat_html(messages, partial_assistant_text=None):
     if not messages and not partial_assistant_text:
         rows.append(
             '<div class="empty-state">'
-            'Posso analisar documentos, imagens, áudios e vídeos.<br>'
-            'Pergunte algo ao Falcão ou envie anexos para análise.'
+            'Pronto para analisar peças, documentos, imagens, áudios e vídeos.<br>'
+            'Digite sua mensagem abaixo ou envie anexos pela barra lateral.'
             '</div>'
         )
     else:
@@ -612,10 +589,11 @@ def build_chat_html(messages, partial_assistant_text=None):
             role = msg["role"]
             content = msg["content"]
             safe = html.escape(content).replace("\n", "<br>")
-            label = '<div class="label">Falcão:</div>' if role == "assistant" else ""
+            label = '<div class="label">Mestre:</div>' if role == "assistant" else ""
+
             rows.append(
                 f'<div class="msg-row {role}">'
-                f'<div class="bubble {role}">{label}{safe}</div>'
+                f'  <div class="bubble {role}">{label}{safe}</div>'
                 f'</div>'
             )
 
@@ -623,30 +601,38 @@ def build_chat_html(messages, partial_assistant_text=None):
             safe = html.escape(partial_assistant_text).replace("\n", "<br>")
             rows.append(
                 '<div class="msg-row assistant">'
-                '<div class="bubble assistant"><div class="label">Falcão:</div>'
-                f'{safe}</div></div>'
+                '  <div class="bubble assistant">'
+                '    <div class="label">Mestre:</div>'
+                f'    {safe}'
+                '  </div>'
+                '</div>'
             )
 
     return (
-        '<div class="chat-outer">'
+        '<div class="chat-panel">'
         '<div id="falcon-chat-scroll" class="chat-scroll">'
         + "".join(rows)
-        + '</div>'
-        '<div class="chat-divider"></div>'
-        '<div class="input-shell"></div>'  # shell visual; widgets vêm abaixo
+        + '<div id="falcon-chat-bottom"></div>'
+        '</div>'
         '</div>'
     )
 
 
 def render_chat(chat_placeholder, messages, partial_assistant_text=None):
-    chat_placeholder.markdown(build_chat_html(messages, partial_assistant_text), unsafe_allow_html=True)
+    chat_placeholder.markdown(
+        build_chat_html(messages, partial_assistant_text),
+        unsafe_allow_html=True,
+    )
 
+    # auto-scroll para a última mensagem
     components.html(
         """
 <script>
   const d = window.parent.document;
   const el = d.getElementById("falcon-chat-scroll");
-  if (el) el.scrollTop = el.scrollHeight;
+  if (el) {
+    el.scrollTop = el.scrollHeight;
+  }
 </script>
 """,
         height=0,
@@ -660,10 +646,10 @@ with st.sidebar:
     st.markdown(
         f"""
 <div class="sidebar-brand">
-  {sidebar_logo}
+  {sidebar_logo_html}
   <div class="sidebar-brand-text">
-    <div class="title">Falcon</div>
-    <div class="sub">Legal Assistant</div>
+    <div class="title">{APP_NAME}</div>
+    <div class="sub">Assistente Jurídico</div>
   </div>
 </div>
 """,
@@ -671,15 +657,13 @@ with st.sidebar:
     )
 
     if st.button("➕  Nova Conversa", use_container_width=True):
-        st.session_state.chat = create_chat(st.session_state.model_name, st.session_state.temperature)
+        st.session_state.chat = create_chat()
         st.session_state.messages = []
         st.session_state.uploader_key += 1
-        st.session_state.draft_message = ""
         st.rerun()
 
-    # botão/área de upload (mais discreto)
     with st.popover("📎  Importar Documentos", use_container_width=True):
-        st.caption("Selecione arquivos para enviar na próxima mensagem")
+        st.caption("Anexe para a próxima mensagem")
         selected_files_sidebar = st.file_uploader(
             "Arquivos",
             accept_multiple_files=True,
@@ -694,32 +678,18 @@ with st.sidebar:
             label_visibility="collapsed",
             key=f"uploader_{st.session_state.uploader_key}",
         )
-        st.caption("PDF, imagens, áudio, vídeo, DOCX, XLSX e mais.")
+        st.caption("PDF, imagens, áudio, vídeo, DOCX, XLSX...")
 
-    if st.button("🕘  Histórico", use_container_width=True):
+    if st.button("🕘  Histórico (sessão)", use_container_width=True):
         st.session_state.show_history = not st.session_state.show_history
-
-    with st.popover("⚙️  Configurações", use_container_width=True):
-        idx = FREE_MODELS.index(st.session_state.model_name) if st.session_state.model_name in FREE_MODELS else 0
-        new_model = st.selectbox("Modelo (free)", FREE_MODELS, index=idx)
-        new_temp = st.slider("Criatividade", 0.0, 1.0, float(st.session_state.temperature), 0.1)
-
-        if st.button("Aplicar", use_container_width=True):
-            st.session_state.model_name = new_model
-            st.session_state.temperature = new_temp
-            st.session_state.chat = create_chat(new_model, new_temp)
-            st.session_state.messages = []
-            st.session_state.draft_message = ""
-            st.rerun()
 
     if st.session_state.show_history:
         st.markdown("---")
-        st.caption("Sessão atual")
-        user_msgs = [m["content"] for m in st.session_state.messages if m["role"] == "user"]
-        if not user_msgs:
+        msgs = [m["content"] for m in st.session_state.messages if m["role"] == "user"]
+        if not msgs:
             st.caption("Sem mensagens ainda.")
         else:
-            for i, txt in enumerate(user_msgs[-8:], 1):
+            for i, txt in enumerate(msgs[-8:], 1):
                 preview = txt.replace("\n", " ")
                 if len(preview) > 40:
                     preview = preview[:40] + "..."
@@ -729,124 +699,114 @@ selected_files = locals().get("selected_files_sidebar") or []
 
 
 # ============================================================
-# TOPO
+# HEADER + FALCON LIVE
 # ============================================================
 st.markdown(
     f"""
-<div class="top-wrap">
-  <div class="top-main">
-    <div class="top-left">
-      {top_logo}
-      <div class="top-title">My Legal Assistant</div>
-    </div>
-    <div class="top-avatar">👤</div>
+<div class="falcon-header">
+  <div class="falcon-header-left">
+    <div class="falcon-header-title">{APP_NAME}</div>
+    <div class="falcon-header-sub">Mestre jurídico com respostas fluidas e análise de anexos.</div>
   </div>
-  <div class="top-sub">Assistente jurídico e professor particular, com anexos e resposta fluida.</div>
 </div>
 """,
     unsafe_allow_html=True,
 )
 
 st.markdown(
-    f'<div class="top-actions"><a class="live-pill" href="{html.escape(LIVE_URL)}" target="_blank">🎙️ Falcon Live</a></div>',
+    f"""
+<div class="falcon-live-wrap">
+  <a class="falcon-live-btn" href="{html.escape(LIVE_URL)}" target="_blank">
+    🎧 Falcon Live
+    <span class="falcon-live-waves">〰〰〰</span>
+  </a>
+</div>
+""",
     unsafe_allow_html=True,
 )
 
+
 # ============================================================
-# CHAT
+# CHAT (render)
 # ============================================================
 chat_placeholder = st.empty()
 render_chat(chat_placeholder, st.session_state.messages)
 
-# Barra de input visual (fica logo abaixo do card, parecendo integrada)
-# container "falso" para parecer dentro do card
-st.markdown(
-    """
-<div style="
-    margin-top:-58px;
-    padding: 10px 12px 12px 12px;
-    border-left:1px solid #dbe3ef;
-    border-right:1px solid #dbe3ef;
-    border-bottom:1px solid #dbe3ef;
-    border-radius:0 0 14px 14px;
-    background:#f8fafd;
-    box-shadow:0 8px 20px rgba(15,23,42,0.05);
-">
-</div>
-""",
-    unsafe_allow_html=True,
-)
-
-# chips de anexos
 if selected_files:
     chips = "".join([f'<span class="chip">📎 {html.escape(f.name)}</span>' for f in selected_files])
     st.markdown(f'<div class="chips-wrap">{chips}</div>', unsafe_allow_html=True)
 
-# linha de input com aparência do mock
-c1, c2, c3, c4 = st.columns([12, 1, 1, 1], vertical_alignment="center")
-
-with c1:
-    pergunta = st.text_input(
-        "Mensagem",
-        value=st.session_state.draft_message,
-        key="falcon_input_text",
-        placeholder="Digite sua mensagem...",
-        label_visibility="collapsed",
-    )
-    st.session_state.draft_message = pergunta
-
-with c2:
-    st.markdown('<div class="icon-btn">', unsafe_allow_html=True)
-    st.button("🎙️", key="mic_btn", help="Falcon Live (voz em tempo real)", use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with c3:
-    st.markdown('<div class="icon-popover">', unsafe_allow_html=True)
-    with st.popover("📎", use_container_width=True):
-        st.caption("Anexos já são enviados pelo menu lateral.")
-        st.caption("Use “Importar Documentos” na barra esquerda.")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with c4:
-    st.markdown('<div class="send-btn">', unsafe_allow_html=True)
-    send_clicked = st.button("➤", key="send_btn", use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# Enter para enviar (atalho)
-components.html(
-    """
-<script>
-const d = window.parent.document;
-const input = d.querySelector('input[aria-label="Mensagem"]') || d.querySelector('input[type="text"]');
-const sendBtns = [...d.querySelectorAll('button')].filter(b => b.innerText.trim() === '➤');
-if (input && sendBtns.length) {
-  const sendBtn = sendBtns[sendBtns.length-1];
-  if (!input.dataset.falconEnterBound) {
-    input.dataset.falconEnterBound = "1";
-    input.addEventListener('keydown', function(e){
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendBtn.click();
-      }
-    });
-  }
-}
-</script>
-""",
-    height=0,
-)
 
 # ============================================================
-# ENVIO / STREAMING
+# INPUT (st.chat_input obrigatório)
 # ============================================================
-if send_clicked and pergunta and pergunta.strip():
+pergunta = st.chat_input("Digite sua mensagem...")
+
+
+# ============================================================
+# STREAMING palavra por palavra + cursor ▌
+# ============================================================
+def stream_word_by_word(chat_obj, payload):
+    partial = ""
+
+    # MANDATÓRIO: send_message_stream
+    for chunk in chat_obj.send_message_stream(payload):
+        txt = getattr(chunk, "text", None)
+        if not txt:
+            continue
+
+        # Divide em palavras + espaços, para efeito "word-by-word"
+        parts = re.split(r"(\s+)", txt)
+        for part in parts:
+            if part == "":
+                continue
+            partial += part
+            render_chat(chat_placeholder, st.session_state.messages, partial_assistant_text=partial + "▌")
+
+    return partial.strip()
+
+
+def friendly_error_message(exc: Exception) -> str:
+    raw = str(exc)
+
+    # quota estourada / resource exhausted
+    if "RESOURCE_EXHAUSTED" in raw or "Quota exceeded" in raw or "429" in raw:
+        retry_match = re.search(r"retryDelay['\"]?:\s*['\"]?([0-9]+s)", raw)
+        retry_text = retry_match.group(1) if retry_match else None
+
+        if retry_text:
+            return (
+                f"Limite gratuito da API do Gemini atingido no momento. "
+                f"Tenta novamente em cerca de {retry_text}. "
+                f"(modelo: {MODEL_NAME})"
+            )
+        return (
+            f"Limite gratuito da API do Gemini atingido no momento. "
+            f"Tenta novamente em instantes. (modelo: {MODEL_NAME})"
+        )
+
+    # modelo não encontrado
+    if "NotFound" in raw or "404" in raw:
+        return (
+            f"Não encontrei o modelo `{MODEL_NAME}` para esta chave/API. "
+            f"Confere se a Gemini API está ativa na tua conta e se o projeto está correto."
+        )
+
+    # fallback genérico (sem dump gigante)
+    return f"Erro ao gerar resposta: {raw[:350]}"
+
+
+# ============================================================
+# ENVIO
+# ============================================================
+if pergunta and pergunta.strip():
     pergunta = pergunta.strip()
-    st.session_state.draft_message = ""
 
     user_display = pergunta
     if selected_files:
         user_display += "\n\n📎 Anexos enviados: " + ", ".join([f.name for f in selected_files])
 
+    # adiciona msg usuário
     st.session_state.messages.append({"role": "user", "content": user_display})
     render_chat(chat_placeholder, st.session_state.messages)
 
@@ -856,40 +816,28 @@ if send_clicked and pergunta and pergunta.strip():
             with st.spinner("🦅 Processando anexos..."):
                 refs, labels = upload_attachments(selected_files)
 
-            st.session_state.messages.append(
-                {"role": "assistant", "content": "✅ Anexos processados: " + " • ".join(labels)}
-            )
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": "✅ Anexos processados: " + " • ".join(labels)
+            })
             render_chat(chat_placeholder, st.session_state.messages)
 
         payload = [*refs, pergunta] if refs else pergunta
 
-        chunks = []
-        try:
-            for chunk in st.session_state.chat.send_message_stream(payload):
-                txt = getattr(chunk, "text", None)
-                if txt:
-                    chunks.append(txt)
-                    render_chat(chat_placeholder, st.session_state.messages, "".join(chunks))
-        except Exception as stream_err:
-            # fallback sem streaming
-            resp = st.session_state.chat.send_message(payload)
-            txt = getattr(resp, "text", "") or str(resp)
-            chunks = [txt]
+        final_text = stream_word_by_word(st.session_state.chat, payload)
+        if not final_text:
+            final_text = "Não consegui responder agora. Tenta reformular a pergunta."
 
-        final_text = "".join(chunks).strip() or "Não consegui responder agora. Tenta reformular."
+        # fixa resposta final sem cursor
         st.session_state.messages.append({"role": "assistant", "content": final_text})
 
-        # limpa anexos após envio
+        # limpa uploader (anexos ficam prontos só para 1 envio)
         st.session_state.uploader_key += 1
+
         render_chat(chat_placeholder, st.session_state.messages)
         st.rerun()
 
     except Exception as e:
-        msg = str(e)
-        if "NotFound" in msg or "404" in msg:
-            msg = (
-                "Modelo não encontrado nessa conta/API. Vai em Configurações e troca para outro modelo free "
-                "(ex.: gemini-1.5-flash ou gemini-2.0-flash)."
-            )
-        st.session_state.messages.append({"role": "assistant", "content": f"❌ Erro: {msg}"})
+        msg = friendly_error_message(e)
+        st.session_state.messages.append({"role": "assistant", "content": f"⚠️ {msg}"})
         render_chat(chat_placeholder, st.session_state.messages)
